@@ -222,13 +222,5 @@ Files can also be uploaded via the Dashboard page or the `POST /data/upload` end
 
 ---
 
-## MCP Server (Claude Code)
-
-The project exposes a Model Context Protocol server so Claude Code can query attendance data directly. It auto-starts via `.claude/settings.json` when you open the project in Claude Code. To run it manually:
-
-```bash
-source .venv/bin/activate
-python -m src.mcp_server
-```
 
 Set `MCP_USER_ROLE` in `.env` to control what Claude Code is allowed to access (`admin`, `teacher`, `counselor`, or `viewer`).
