@@ -14,7 +14,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Llama vi
 - **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, at-risk student table, and admin user management
 - **REST API** — FastAPI backend with JWT auth, SSE streaming, file upload, and dashboard generation
 - **Jupyter notebook** — full interactive analysis environment that shares the same `src/` backend
-- **MCP server** — exposes tools to Claude Code via the Model Context Protocol
+- **MCP server** — Allows the model to access tools such as the vector DB.
 
 ---
 
@@ -221,6 +221,3 @@ Optional columns: `student_name`, `class`, `grade`.
 Files can also be uploaded via the Dashboard page or the `POST /data/upload` endpoint.
 
 ---
-
-
-Set `MCP_USER_ROLE` in `.env` to control what Claude Code is allowed to access (`admin`, `teacher`, `counselor`, or `viewer`).
