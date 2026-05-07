@@ -11,4 +11,5 @@ __pycache__/
 .ipynb_checkpoints/
 data/dashboards/
 logs/
+data/chroma_db/
 .cursor/
