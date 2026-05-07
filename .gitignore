@@ -1,0 +1,13 @@
+.env
+*.env
+data/
+models/*.pt
+models/*.pkl
+__pycache__/
+*.pyc
+.venv/
+*.csv
+*.parquet
+.ipynb_checkpoints/
+data/dashboards/
+logs/
