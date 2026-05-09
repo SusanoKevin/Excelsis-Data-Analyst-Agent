@@ -21,9 +21,9 @@ from typing import Optional
 import chromadb
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
-EMBED_MODEL = os.getenv("EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
 CHROMA_PATH = Path(os.getenv("CHROMA_PATH", "./data/chroma_db"))
 
 # Built-in seed documents for attendance intervention strategies
@@ -74,11 +74,10 @@ _SEED_POLICIES = [
 class AttendanceVectorStore:
     def __init__(self, persist_dir: str = str(CHROMA_PATH)) -> None:
         Path(persist_dir).mkdir(parents=True, exist_ok=True)
-        self._embeddings = NVIDIAEmbeddings(
-            model=EMBED_MODEL,
-            api_key=os.environ.get("NVIDIA_API_KEY"),
-            base_url=os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
-            truncate="END",
+        self._embeddings = HuggingFaceEmbeddings(
+            model_name=EMBED_MODEL,
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
         )
         self._client = chromadb.PersistentClient(path=persist_dir)
 
@@ -109,7 +108,7 @@ class AttendanceVectorStore:
         try:
             self._policies.add_documents(docs)
         except Exception as e:
-            print(f"[vector_store] Could not seed policy documents (NVIDIA API key set?): {e}")
+            print(f"[vector_store] Could not seed policy documents (HF_TOKEN set?): {e}")
 
     def add_policy_docs(self, texts: list[str], metadatas: Optional[list[dict]] = None) -> None:
         metas = metadatas or [{} for _ in texts]
@@ -145,7 +144,7 @@ class AttendanceVectorStore:
         try:
             self._records.add_documents(docs)
         except Exception as e:
-            print(f"[vector_store] Could not index summaries (NVIDIA API key set?): {e}")
+            print(f"[vector_store] Could not index summaries (HF_TOKEN set?): {e}")
             return 0
         return len(docs)
 

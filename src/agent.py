@@ -1,9 +1,9 @@
 """
 LangGraph ReAct agent for Excelsis 360.
 
-The agent replaces the keyword-routing approach in the notebook with a
-true reasoning loop: it decides which tools to call, in what order, and
-synthesises a final answer — all within the user's security context.
+Two models are used:
+- Analysis model (Qwen/Qwen2.5-3B-Instruct): drives the ReAct loop with tool calling
+- Chat model (google/gemma-2-2b-it): lightweight conversational replies without tools
 
 Usage
 -----
@@ -12,6 +12,7 @@ Usage
 
     agent = ExcelsisAgent(store=store, vector_store=vec)
     answer = agent.ask("Which classes are at risk?", user=UserContext("alice", Role.TEACHER, ["10A"]))
+    reply  = agent.chat("Thanks, that was helpful!")
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import os
 from typing import Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
+from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langgraph.prebuilt import create_react_agent
 
 from .security import ADMIN_USER, UserContext
@@ -46,24 +47,39 @@ You have access to:
 """
 
 
+def _make_endpoint(repo_id: str, max_new_tokens: int = 2048, temperature: float = 0.1) -> ChatHuggingFace:
+    endpoint = HuggingFaceEndpoint(
+        repo_id=repo_id,
+        huggingfacehub_api_token=os.environ.get("HF_TOKEN"),
+        task="text-generation",
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        do_sample=True,
+    )
+    return ChatHuggingFace(llm=endpoint)
+
+
 class ExcelsisAgent:
     def __init__(
         self,
         store=None,
         vector_store=None,
-        model_name: Optional[str] = None,
+        analysis_model: Optional[str] = None,
+        chat_model: Optional[str] = None,
         max_history: int = 10,
     ) -> None:
-        mn = model_name or os.environ.get("LLM_MODEL", "meta/llama-3.1-8b-instruct")
-        llm = ChatNVIDIA(
-            model=mn,
-            api_key=os.environ.get("NVIDIA_API_KEY"),
-            base_url=os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
-            temperature=0.1,
-            max_tokens=2048,
+        analysis_repo = analysis_model or os.environ.get(
+            "ANALYSIS_MODEL", "Qwen/Qwen2.5-3B-Instruct"
         )
+        chat_repo = chat_model or os.environ.get(
+            "CHAT_MODEL", "google/gemma-2-2b-it"
+        )
+
+        analysis_llm = _make_endpoint(analysis_repo, max_new_tokens=2048, temperature=0.1)
+        self._chat_llm = _make_endpoint(chat_repo, max_new_tokens=1024, temperature=0.3)
+
         self._graph = create_react_agent(
-            model=llm,
+            model=analysis_llm,
             tools=ALL_TOOLS,
             prompt=SystemMessage(content=SYSTEM_PROMPT),
         )
@@ -73,16 +89,7 @@ class ExcelsisAgent:
         self._max_history = max_history
 
     def ask(self, query: str, user: Optional[UserContext] = None) -> str:
-        """
-        Run the agent with a natural-language query.
-
-        Parameters
-        ----------
-        query : str
-            The analyst question.
-        user : UserContext
-            Who is asking. Defaults to ADMIN_USER if omitted.
-        """
+        """Run the ReAct analysis agent (Qwen) with tool access."""
         user = user or ADMIN_USER
         config = {
             "configurable": {
@@ -96,12 +103,23 @@ class ExcelsisAgent:
 
         result = self._graph.invoke({"messages": messages}, config=config)
 
-        # Last message is the final AI answer
         final_msg = result["messages"][-1]
         answer = final_msg.content if isinstance(final_msg, AIMessage) else str(final_msg)
 
-        # Update rolling history
         self._history.append(HumanMessage(content=query))
+        self._history.append(AIMessage(content=answer))
+        if len(self._history) > self._max_history * 2:
+            self._history = self._history[-(self._max_history * 2):]
+
+        return answer
+
+    def chat(self, message: str) -> str:
+        """Send a plain conversational message to the chat model (Gemma) without tools."""
+        messages = list(self._history[-self._max_history:]) + [HumanMessage(content=message)]
+        response = self._chat_llm.invoke(messages)
+        answer = response.content if hasattr(response, "content") else str(response)
+
+        self._history.append(HumanMessage(content=message))
         self._history.append(AIMessage(content=answer))
         if len(self._history) > self._max_history * 2:
             self._history = self._history[-(self._max_history * 2):]

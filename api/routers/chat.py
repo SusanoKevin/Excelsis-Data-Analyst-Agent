@@ -55,8 +55,12 @@ async def chat_stream(
 
         except AccessDeniedError as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Internal error — check server logs'})}\n\n"
+            import logging
+            logging.getLogger(__name__).exception("Chat stream error")
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Model error: {e}' })}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(
         generate(),
