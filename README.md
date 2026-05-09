@@ -1,20 +1,21 @@
 # Excelsis 360 — Attendance Analyst Agent
 
-AI-powered attendance analysis system built on a LangGraph ReAct agent (Llama via NVIDIA NIM), ChromaDB vector search, and a FastAPI + React full-stack web interface.
+AI-powered attendance analysis system built on a LangGraph ReAct agent (Qwen via HuggingFace Inference API), ChromaDB vector search, and a FastAPI + React full-stack web interface.
 
 ---
 
 ## Features
 
-- **Natural-language chat** — ask questions about attendance in plain English; the Llama model reasons across multiple tools and streams the answer token-by-token
-- **ReAct reasoning loop** — the model decides which tools to call (attendance stats, at-risk query, vector knowledge base, web search) and in what order
-- **ChromaDB vector search** — semantic search over intervention policy documents and indexed class summaries using NVIDIA NIM embeddings
+- **Natural-language chat** — ask questions about attendance in plain English; the Qwen analysis model reasons across multiple tools and streams the answer token-by-token
+- **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, vector knowledge base, web search) and in what order
+- **Dual-model setup** — Qwen2.5-3B handles data analysis and tool calling; Gemma-2-2B handles lightweight conversational replies
+- **ChromaDB vector search** — semantic search over intervention policy documents and indexed class summaries using local sentence-transformer embeddings
 - **Role-based access control** — four roles (admin, counselor, teacher, viewer) enforced at both the tool and data level; teachers only ever see their own classes
 - **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
 - **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, at-risk student table, and admin user management
 - **REST API** — FastAPI backend with JWT auth, SSE streaming, file upload, and dashboard generation
 - **Jupyter notebook** — full interactive analysis environment that shares the same `src/` backend
-- **MCP server** — Allows the model to access tools such as the vector DB.
+- **MCP server** — exposes attendance analysis tools to Claude Code
 
 ---
 
@@ -22,9 +23,10 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Llama vi
 
 | Layer | Technology |
 |---|---|
-| LLM | Llama 3.1 8B via NVIDIA NIM (`langchain-nvidia-ai-endpoints`) |
+| Analysis LLM | Qwen2.5-3B-Instruct via HuggingFace Inference API (`langchain-huggingface`) |
+| Chat LLM | Gemma-2-2B-IT via HuggingFace Inference API (`langchain-huggingface`) |
 | Agent | LangGraph ReAct (`create_react_agent`) |
-| Vector DB | ChromaDB + NVIDIA NIM embeddings (`nvidia/nv-embedqa-e5-v5`) |
+| Vector DB | ChromaDB + local sentence-transformer embeddings (`BAAI/bge-base-en-v1.5`) |
 | Backend | FastAPI + Uvicorn |
 | Auth | JWT (python-jose) + bcrypt |
 | Frontend | React 18 + Vite + Tailwind CSS |
@@ -51,9 +53,9 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Llama vi
 ├── src/                  # Shared Python backend (used by API + notebook)
 │   ├── security.py       # RBAC: Role, Permission, UserContext, SecurityManager
 │   ├── data_store.py     # AttendanceDataStore (ingest, stats, at-risk)
-│   ├── vector_store.py   # AttendanceVectorStore (ChromaDB + NVIDIA embeddings)
+│   ├── vector_store.py   # AttendanceVectorStore (ChromaDB + HF embeddings)
 │   ├── tools.py          # LangGraph tools (5 tools, all security-aware)
-│   ├── agent.py          # ExcelsisAgent — LangGraph ReAct agent
+│   ├── agent.py          # ExcelsisAgent — dual-model LangGraph ReAct agent
 │   ├── dashboard.py      # Dashboard builder (matplotlib/seaborn)
 │   └── mcp_server.py     # FastMCP server for Claude Code
 │
@@ -82,11 +84,13 @@ cp .env.example .env
 Edit `.env` and fill in your keys:
 
 ```env
-NVIDIA_API_KEY=nvapi-...          # Required — NVIDIA NIM API key
+HF_TOKEN=hf_...                   # Required — HuggingFace API token
 TAVILY_API_KEY=tvly-...           # Optional — enables web search tool
 JWT_SECRET=change-me-in-production
 ADMIN_PASSWORD=your-admin-password
 ```
+
+Get your free HuggingFace token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 
 ### 2. Install Python dependencies
 
@@ -95,6 +99,8 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+> The first run will download the `BAAI/bge-base-en-v1.5` embedding model locally (~440 MB). Subsequent starts are instant.
 
 ### 3. Install frontend dependencies
 
@@ -122,16 +128,32 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `NVIDIA_API_KEY` | Yes | — | NVIDIA NIM API key for LLM and embeddings |
+| `HF_TOKEN` | Yes | — | HuggingFace API token for both LLM calls |
 | `TAVILY_API_KEY` | No | — | Tavily web search (enables the web search tool) |
-| `LLM_MODEL` | No | `meta/llama-3.1-8b-instruct` | NVIDIA NIM model ID |
-| `NVIDIA_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM base URL |
-| `EMBED_MODEL` | No | `nvidia/nv-embedqa-e5-v5` | Embedding model for ChromaDB |
+| `ANALYSIS_MODEL` | No | `Qwen/Qwen2.5-3B-Instruct` | HF model ID for the ReAct analysis agent |
+| `CHAT_MODEL` | No | `google/gemma-2-2b-it` | HF model ID for lightweight conversational replies |
+| `EMBED_MODEL` | No | `BAAI/bge-base-en-v1.5` | Local sentence-transformer embedding model |
 | `CHROMA_PATH` | No | `./data/chroma_db` | ChromaDB persistence directory |
 | `ATTENDANCE_DATA_PATH` | No | `./data/attendance` | Directory of attendance files to load on startup |
 | `AT_RISK_THRESHOLD` | No | `75.0` | Default attendance % threshold for at-risk flagging |
 | `JWT_SECRET` | Yes (prod) | `change-me-in-production` | Secret key for JWT signing |
 | `ADMIN_PASSWORD` | No | `admin123` | Password for the default admin account |
+
+---
+
+## Models
+
+### Analysis model — `Qwen/Qwen2.5-3B-Instruct`
+
+Drives the LangGraph ReAct loop. Chosen for its strong built-in tool/function calling support at 3B parameters, which is reliable on the HuggingFace free serverless Inference API. Handles all data queries, at-risk identification, dashboard requests, and knowledge-base lookups.
+
+### Chat model — `google/gemma-2-2b-it`
+
+Handles lightweight conversational replies that don't require tool access — greetings, clarifications, and general questions. At 2B parameters it responds quickly within free-tier rate limits.
+
+### Embeddings — `BAAI/bge-base-en-v1.5`
+
+Runs locally via `sentence-transformers`. No API key or network call required at query time. Used by ChromaDB for semantic search over intervention policy documents and indexed class summaries.
 
 ---
 
@@ -160,7 +182,7 @@ Users are managed through the **Users** page (admin only) or directly in `api/us
 | Users | `/users` | Admin only |
 
 ### Chat
-Type any question in natural language. The Llama model streams its response token-by-token, with tool-use indicators showing which data sources it consulted (e.g. *🔧 Attendance data*, *🔧 Knowledge base*).
+Type any question in natural language. The analysis model streams its response token-by-token, with tool-use indicators showing which data sources it consulted (e.g. *Attendance data*, *Knowledge base*).
 
 Example questions:
 - *Which classes have the lowest attendance this month?*

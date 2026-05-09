@@ -14,10 +14,11 @@ Claude Code config (~/.claude/settings.json or .claude/settings.json):
           "args": ["-m", "src.mcp_server"],
           "cwd": "/path/to/Excelsis_Attendance-Agent",
           "env": {
-            "NVIDIA_API_KEY":    "nvapi-...",
-            "TAVILY_API_KEY":    "tvly-...",
-            "LLM_MODEL":         "meta/llama-3.1-8b-instruct",
-            "MCP_USER_ROLE":     "admin",
+            "HF_TOKEN":            "hf_...",
+            "TAVILY_API_KEY":      "tvly-...",
+            "ANALYSIS_MODEL":      "Qwen/Qwen2.5-3B-Instruct",
+            "CHAT_MODEL":          "google/gemma-2-2b-it",
+            "MCP_USER_ROLE":       "admin",
             "MCP_ALLOWED_CLASSES": ""
           }
         }

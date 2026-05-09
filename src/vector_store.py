@@ -1,5 +1,5 @@
 """
-ChromaDB vector store backed by NVIDIA NIM embeddings.
+ChromaDB vector store backed by HuggingFace sentence-transformer embeddings.
 
 Collections
 -----------
