@@ -74,6 +74,7 @@ _SEED_POLICIES = [
 class AttendanceVectorStore:
     def __init__(self, persist_dir: str = str(CHROMA_PATH)) -> None:
         Path(persist_dir).mkdir(parents=True, exist_ok=True)
+        self._persist_dir = persist_dir
         self._embeddings = HuggingFaceEmbeddings(
             model_name=EMBED_MODEL,
             model_kwargs={"device": "cpu"},
