@@ -1,19 +1,19 @@
 """
-Dashboard generation extracted from Excelsis.ipynb Cell 4.
-Imported by both the notebook and the FastAPI backend.
+Dashboard generation for Excelsis 360.
+Used by the FastAPI backend, the generate_dashboard tool, and the notebook.
 """
 
 from __future__ import annotations
 
-import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import matplotlib
-matplotlib.use("Agg")  # non-interactive backend safe for server use
+matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import numpy as np
+import pandas as pd
 import seaborn as sns
 
 COLORS = {
@@ -47,20 +47,256 @@ def _theme():
     )
 
 
+def _empty_fig(message: str) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(9, 3))
+    fig.patch.set_facecolor("#eef2f7")
+    ax.text(0.5, 0.5, message, ha="center", va="center",
+            fontsize=13, color=COLORS["primary"])
+    ax.axis("off")
+    return fig
+
+
+def _compute_filtered(store, group_by: str, period: str, classes=None) -> pd.DataFrame:
+    """Compute attendance stats with optional class filtering."""
+    if not classes:
+        return store.compute_stats(group_by, period)
+
+    raw = store.merged()
+    if raw.empty:
+        return pd.DataFrame()
+    if "class" in raw.columns:
+        raw = raw[raw["class"].isin(classes)]
+    if raw.empty:
+        return pd.DataFrame()
+
+    if period in ("last_7_days", "this_week"):
+        raw = raw[raw["date"] >= datetime.utcnow() - timedelta(days=7)]
+    elif period in ("last_30_days", "this_month"):
+        raw = raw[raw["date"] >= datetime.utcnow() - timedelta(days=30)]
+
+    col = group_by if group_by in raw.columns else (
+        "class" if "class" in raw.columns else "student_id"
+    )
+    g = raw.groupby(col).agg(
+        total=("status",     "count"),
+        present=("is_present", "sum"),
+        absent=("is_absent",  "sum"),
+        late=("is_late",    "sum"),
+    ).reset_index()
+    g["attendance_rate"] = (g["present"] / g["total"] * 100).round(1)
+    return g
+
+
+# ---------------------------------------------------------------------------
+# build_query_dashboard — focused, query-specific charts
+# ---------------------------------------------------------------------------
+
+def build_query_dashboard(
+    store,
+    chart_type: str = "full",
+    group_by: str = "class",
+    period: str = "all",
+    title: str = "",
+    classes: list = None,
+) -> plt.Figure:
+    """
+    Generate a query-specific attendance chart.
+
+    chart_type: 'full' | 'class_bar' | 'weekly_trend' | 'weekday_bar' |
+                'status_donut' | 'at_risk_bar' | 'grade_bar'
+    group_by:   column to group by (used for the fallback generic chart)
+    period:     'all' | 'last_7_days' | 'last_30_days'
+    title:      chart title (auto-generated if blank)
+    classes:    restrict data to these classes (None = all)
+    """
+    _theme()
+    summ = store.summary()
+    if summ.get("status") == "no_data":
+        return _empty_fig("No attendance data loaded.")
+
+    rate       = summ.get("overall_attendance_rate", 0)
+    auto_title = title or f"Attendance — {chart_type.replace('_', ' ').title()}"
+
+    if chart_type == "full":
+        return build_modern_static_dashboard(store, period=period, save=False)
+
+    # ---- class_bar ---------------------------------------------------------
+    if chart_type == "class_bar":
+        df = _compute_filtered(store, "class", period, classes)
+        if df.empty:
+            return _empty_fig("No class data available.")
+        gcol = "class" if "class" in df.columns else df.columns[0]
+        df   = df.sort_values("attendance_rate")
+        fig, ax = plt.subplots(figsize=(10, max(4, len(df) * 0.55 + 1)))
+        fig.patch.set_facecolor("#eef2f7")
+        sns.barplot(data=df, y=gcol, x="attendance_rate",
+                    palette="crest", hue=gcol, dodge=False, legend=False, ax=ax)
+        ax.axvline(75,   color=COLORS["danger"], linestyle="--", linewidth=1.2, alpha=0.85, label="At-risk (75%)")
+        ax.axvline(rate, color="#fbbf24",         linestyle="-.", linewidth=1.2, alpha=0.9,  label=f"Avg ({rate:.1f}%)")
+        ax.set_xlim(max(45, df["attendance_rate"].min() - 5), 100)
+        ax.set_title(auto_title, loc="left", fontsize=13, fontweight="600", color=COLORS["primary"])
+        ax.set_xlabel("Attendance rate (%)")
+        ax.legend(fontsize=9, framealpha=0.95)
+        fig.tight_layout()
+        return fig
+
+    # ---- weekly_trend ------------------------------------------------------
+    if chart_type == "weekly_trend":
+        df = _compute_filtered(store, "week", period, classes)
+        if df.empty:
+            return _empty_fig("No weekly data available.")
+        wcol = "week" if "week" in df.columns else df.columns[0]
+        df   = df.sort_values(wcol)
+        n, x = len(df), np.arange(len(df))
+        fig, ax = plt.subplots(figsize=(12, 4.5))
+        fig.patch.set_facecolor("#eef2f7")
+        ax.plot(x, df["attendance_rate"], marker="o", linewidth=2.2, markersize=5, color=COLORS["accent"])
+        ax.axhline(75, color=COLORS["danger"], linestyle="--", linewidth=1, alpha=0.75, label="At-risk (75%)")
+        ax.fill_between(x, df["attendance_rate"], 75,
+                        where=(df["attendance_rate"] < 75),
+                        color=COLORS["danger"], alpha=0.12, interpolate=True)
+        step     = max(1, int(np.ceil(n / 10)))
+        tick_pos = x[::step]
+        ax.set_xticks(tick_pos)
+        ax.set_xticklabels([str(df[wcol].iloc[j]) for j in tick_pos], rotation=40, ha="right", fontsize=8)
+        ax.set_xlim(-0.5, n - 0.5)
+        ax.set_ylabel("Attendance rate (%)")
+        ax.set_title(auto_title, loc="left", fontsize=13, fontweight="600", color=COLORS["primary"])
+        ax.legend(fontsize=9, framealpha=0.95)
+        fig.tight_layout()
+        return fig
+
+    # ---- weekday_bar -------------------------------------------------------
+    if chart_type == "weekday_bar":
+        df = _compute_filtered(store, "day_of_week", period, classes)
+        if df.empty:
+            return _empty_fig("No weekday data available.")
+        if "day_of_week" in df.columns:
+            df = df.copy()
+            df["day_of_week"] = pd.Categorical(
+                df["day_of_week"], categories=_DAY_ORDER, ordered=True
+            )
+            df = df.sort_values("day_of_week")
+        gcol = "day_of_week" if "day_of_week" in df.columns else df.columns[0]
+        fig, ax = plt.subplots(figsize=(9, 4.5))
+        fig.patch.set_facecolor("#eef2f7")
+        sns.barplot(data=df, x=gcol, y="attendance_rate",
+                    color=COLORS["success"], alpha=0.88, ax=ax, edgecolor="white")
+        ax.set_xticks(range(len(df)))
+        ax.set_xticklabels([str(df[gcol].iloc[j])[:3] for j in range(len(df))],
+                           rotation=0, ha="center", fontsize=9)
+        ax.axhline(75, color=COLORS["danger"], linestyle="--", linewidth=1, alpha=0.75)
+        ax.set_title(auto_title, loc="left", fontsize=13, fontweight="600", color=COLORS["primary"])
+        ax.set_xlabel("")
+        ax.set_ylabel("Rate (%)")
+        fig.tight_layout()
+        return fig
+
+    # ---- status_donut ------------------------------------------------------
+    if chart_type == "status_donut":
+        df_raw = store.merged()
+        if classes and "class" in df_raw.columns:
+            df_raw = df_raw[df_raw["class"].isin(classes)]
+        if df_raw.empty or "status" not in df_raw.columns:
+            return _empty_fig("No status data available.")
+        sc      = df_raw["status"].value_counts()
+        total_n = sc.sum()
+        cmap    = {"present": COLORS["success"], "absent": COLORS["danger"],
+                   "late": COLORS["warning"], "excused": "#8b5cf6"}
+        fig, ax = plt.subplots(figsize=(8, 6))
+        fig.patch.set_facecolor("#eef2f7")
+        wedges, _ = ax.pie(
+            sc.values, labels=None, autopct=None,
+            colors=[cmap.get(str(s).lower(), "#64748b") for s in sc.index],
+            wedgeprops=dict(width=0.52, edgecolor="white", linewidth=1.5),
+            startangle=90,
+        )
+        ax.set_title(auto_title, loc="left", fontsize=13, fontweight="600", color=COLORS["primary"])
+        ax.legend(
+            wedges,
+            [f"{str(i).title():8}  {int(sc[i]):,}  ({100*sc[i]/total_n:.1f}%)" for i in sc.index],
+            title="Status", loc="center left", bbox_to_anchor=(1.02, 0.5),
+            fontsize=10, framealpha=0.95,
+        )
+        ax.set_aspect("equal")
+        fig.tight_layout()
+        return fig
+
+    # ---- at_risk_bar -------------------------------------------------------
+    if chart_type == "at_risk_bar":
+        df = store.get_at_risk(threshold=75.0, grade="all")
+        if classes:
+            for col in ("cls", "class"):
+                if col in df.columns:
+                    df = df[df[col].isin(classes)]
+                    break
+        if df.empty:
+            return _empty_fig("No at-risk students found.")
+        df       = df.sort_values("attendance_rate")
+        name_col = "name" if "name" in df.columns else "student_id"
+        fig, ax  = plt.subplots(figsize=(10, max(4, len(df) * 0.35 + 2)))
+        fig.patch.set_facecolor("#eef2f7")
+        sns.barplot(data=df, y=name_col, x="attendance_rate",
+                    color=COLORS["danger"], alpha=0.85, ax=ax, edgecolor="white")
+        ax.axvline(75, color=COLORS["warning"], linestyle="--", linewidth=1.2, label="Threshold (75%)")
+        ax.set_xlim(0, 82)
+        ax.set_title(auto_title, loc="left", fontsize=13, fontweight="600", color=COLORS["primary"])
+        ax.set_xlabel("Attendance rate (%)")
+        ax.legend(fontsize=9, framealpha=0.95)
+        fig.tight_layout()
+        return fig
+
+    # ---- grade_bar ---------------------------------------------------------
+    if chart_type == "grade_bar":
+        df = _compute_filtered(store, "grade", period, classes)
+        if df.empty:
+            return _empty_fig("No grade data available.")
+        gcol = "grade" if "grade" in df.columns else df.columns[0]
+        df   = df.sort_values("attendance_rate")
+        fig, ax = plt.subplots(figsize=(9, 4.5))
+        fig.patch.set_facecolor("#eef2f7")
+        sns.barplot(data=df, x=gcol, y="attendance_rate",
+                    palette="crest", hue=gcol, dodge=False, legend=False, ax=ax)
+        ax.axhline(75,   color=COLORS["danger"], linestyle="--", linewidth=1.2, alpha=0.85, label="At-risk (75%)")
+        ax.axhline(rate, color="#fbbf24",         linestyle="-.", linewidth=1.2, alpha=0.9,  label=f"Avg ({rate:.1f}%)")
+        ax.set_title(auto_title, loc="left", fontsize=13, fontweight="600", color=COLORS["primary"])
+        ax.set_ylabel("Attendance rate (%)")
+        ax.set_xlabel("")
+        ax.legend(fontsize=9, framealpha=0.95)
+        fig.tight_layout()
+        return fig
+
+    # ---- fallback: generic group_by chart ----------------------------------
+    df = _compute_filtered(store, group_by, period, classes)
+    if df.empty:
+        return _empty_fig("No data available.")
+    gcol = group_by if group_by in df.columns else df.columns[0]
+    df   = df.sort_values("attendance_rate")
+    fig, ax = plt.subplots(figsize=(10, 5))
+    fig.patch.set_facecolor("#eef2f7")
+    sns.barplot(data=df, x=gcol, y="attendance_rate",
+                palette="crest", hue=gcol, dodge=False, legend=False, ax=ax)
+    ax.axhline(75, color=COLORS["danger"], linestyle="--", linewidth=1.2, alpha=0.85)
+    ax.set_title(auto_title, loc="left", fontsize=13, fontweight="600", color=COLORS["primary"])
+    ax.set_ylabel("Attendance rate (%)")
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# build_modern_static_dashboard — full 4-panel overview
+# ---------------------------------------------------------------------------
+
 def build_modern_static_dashboard(store, period: str = "all", save: bool = True) -> plt.Figure:
     """
     Generate a 4-panel attendance dashboard.
 
     Parameters
     ----------
-    store   : AttendanceDataStore
-    period  : 'all' | 'last_7_days' | 'last_30_days'
-    save    : if True, write PNG to data/dashboards/attendance_dashboard_modern.png
-
-    Returns the matplotlib Figure (caller can savefig to a custom path).
+    store  : AttendanceDataStore
+    period : 'all' | 'last_7_days' | 'last_30_days'
+    save   : if True, write PNG to data/dashboards/attendance_dashboard_modern.png
     """
-    import pandas as pd
-
     _theme()
     summ = store.summary()
 
@@ -72,12 +308,12 @@ def build_modern_static_dashboard(store, period: str = "all", save: bool = True)
         plt.tight_layout()
         return fig
 
-    df_class = store.compute_stats("class",      period)
-    df_week  = store.compute_stats("week",       period)
+    df_class = store.compute_stats("class",       period)
+    df_week  = store.compute_stats("week",        period)
     df_dow   = store.compute_stats("day_of_week", period)
 
     if not df_week.empty:
-        wk_col = "week" if "week" in df_week.columns else df_week.columns[0]
+        wk_col  = "week" if "week" in df_week.columns else df_week.columns[0]
         df_week = df_week.sort_values(wk_col)
 
     if not df_dow.empty and "day_of_week" in df_dow.columns:
@@ -90,7 +326,7 @@ def build_modern_static_dashboard(store, period: str = "all", save: bool = True)
     rate = summ.get("overall_attendance_rate", 0)
     dr   = summ.get("date_range", {})
 
-    fig = plt.figure(figsize=(15, 11), constrained_layout=True)
+    fig = plt.figure(figsize=(18, 13))
     gs  = fig.add_gridspec(nrows=4, ncols=4,
                            height_ratios=[0.11, 0.16, 1.0, 1.0],
                            hspace=0.42, wspace=0.28)
@@ -109,10 +345,10 @@ def build_modern_static_dashboard(store, period: str = "all", save: bool = True)
 
     # KPI tiles
     kpis = [
-        ("Attendance rate", f"{rate}%",                              COLORS["success"]),
-        ("Records",         f"{summ.get('total_records', 0):,}",     COLORS["accent"]),
-        ("Students",        f"{summ.get('unique_students', 0):,}",   "#38bdf8"),
-        ("Absences",        f"{summ.get('total_absences', 0):,}",    COLORS["danger"]),
+        ("Attendance rate", f"{rate}%",                             COLORS["success"]),
+        ("Records",         f"{summ.get('total_records', 0):,}",    COLORS["accent"]),
+        ("Students",        f"{summ.get('unique_students', 0):,}",  "#38bdf8"),
+        ("Absences",        f"{summ.get('total_absences', 0):,}",   COLORS["danger"]),
     ]
     for i, (lab, val, c) in enumerate(kpis):
         ax_k = fig.add_subplot(gs[1, i])
@@ -128,11 +364,11 @@ def build_modern_static_dashboard(store, period: str = "all", save: bool = True)
     # By-class bar
     ax1 = fig.add_subplot(gs[2, :2])
     if not df_class.empty:
-        gcol = "class" if "class" in df_class.columns else df_class.columns[0]
+        gcol   = "class" if "class" in df_class.columns else df_class.columns[0]
         plot_c = df_class.sort_values("attendance_rate")
         sns.barplot(data=plot_c, y=gcol, x="attendance_rate",
                     palette="crest", hue=gcol, dodge=False, legend=False, ax=ax1)
-        ax1.axvline(75,   color=COLORS["danger"],  linestyle="--", linewidth=1, alpha=0.85, label="At-risk (75%)")
+        ax1.axvline(75,   color=COLORS["danger"],  linestyle="--", linewidth=1,   alpha=0.85, label="At-risk (75%)")
         ax1.axvline(rate, color="#fbbf24",          linestyle="-.", linewidth=1.2, alpha=0.95, label=f"Avg ({rate:.1f}%)")
         ax1.set_xlim(max(45, plot_c["attendance_rate"].min() - 5), 100)
         ax1.set_title("By class", loc="left", fontsize=12, fontweight="600",
@@ -152,6 +388,7 @@ def build_modern_static_dashboard(store, period: str = "all", save: bool = True)
         ax2.set_ylabel("Attendance rate (%)")
         ax2.set_title("Weekly trend", loc="left", fontsize=12, fontweight="600",
                       color=COLORS["primary"], pad=12)
+        ax2.set_xlabel("")
         n    = len(df_week)
         step = max(1, int(np.ceil(n / 10)))
         tick_pos = x_idx[::step]
@@ -168,8 +405,9 @@ def build_modern_static_dashboard(store, period: str = "all", save: bool = True)
         gcol = "day_of_week" if "day_of_week" in df_dow.columns else df_dow.columns[0]
         sns.barplot(data=df_dow, x=gcol, y="attendance_rate",
                     color=COLORS["success"], alpha=0.88, ax=ax3, edgecolor="white")
+        ax3.set_xticks(range(len(df_dow)))
         ax3.set_xticklabels(
-            [t.get_text()[:3] for t in ax3.get_xticklabels()],
+            [str(df_dow[gcol].iloc[j])[:3] for j in range(len(df_dow))],
             rotation=0, ha="center", fontsize=9,
         )
         ax3.set_title("By weekday", loc="left", fontsize=12, fontweight="600",
@@ -178,12 +416,12 @@ def build_modern_static_dashboard(store, period: str = "all", save: bool = True)
         ax3.set_ylabel("Rate (%)")
 
     # Status-mix donut
-    ax4   = fig.add_subplot(gs[3, 2:])
+    ax4    = fig.add_subplot(gs[3, 2:])
     df_raw = store.merged()
     if not df_raw.empty and "status" in df_raw.columns:
-        sc   = df_raw["status"].value_counts()
-        cmap = {"present": COLORS["success"], "absent": COLORS["danger"],
-                "late": COLORS["warning"], "excused": "#8b5cf6"}
+        sc         = df_raw["status"].value_counts()
+        cmap       = {"present": COLORS["success"], "absent": COLORS["danger"],
+                      "late": COLORS["warning"], "excused": "#8b5cf6"}
         pie_colors = [cmap.get(str(s).lower(), "#64748b") for s in sc.index]
         total_n    = sc.sum()
         wedges, _  = ax4.pie(

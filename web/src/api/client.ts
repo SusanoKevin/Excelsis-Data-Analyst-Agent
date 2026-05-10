@@ -30,6 +30,8 @@ export async function streamChat(
   onToolEnd: (tool: string) => void,
   onDone: () => void,
   onError: (msg: string) => void,
+  onRouting?: () => void,
+  onDashboard?: (url: string) => void,
 ) {
   const token = localStorage.getItem('token')
   const res = await fetch('/chat/stream', {
@@ -64,11 +66,13 @@ export async function streamChat(
       if (!raw) continue
       try {
         const evt = JSON.parse(raw)
-        if (evt.type === 'token')      onToken(evt.content)
+        if      (evt.type === 'token')      onToken(evt.content)
         else if (evt.type === 'tool_start') onToolStart(evt.tool)
         else if (evt.type === 'tool_end')   onToolEnd(evt.tool)
         else if (evt.type === 'done')       onDone()
         else if (evt.type === 'error')      onError(evt.message)
+        else if (evt.type === 'routing')    onRouting?.()
+        else if (evt.type === 'dashboard')  onDashboard?.(evt.url)
       } catch { /* ignore malformed lines */ }
     }
   }

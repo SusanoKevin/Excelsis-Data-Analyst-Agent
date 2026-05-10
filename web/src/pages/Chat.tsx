@@ -33,12 +33,20 @@ export default function Chat() {
     // Add empty streaming assistant message
     setMessages((prev) => [...prev, { role: 'assistant', content: '', toolsUsed: [], isStreaming: true }])
 
+    const updateLast = (patch: object) =>
+      setMessages((prev) => {
+        const msgs = [...prev]
+        msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...patch }
+        return msgs
+      })
+
     await streamChat(
       q,
       // onToken
       (token) => setMessages((prev) => {
         const msgs = [...prev]
-        msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: msgs[msgs.length - 1].content + token }
+        const last = msgs[msgs.length - 1]
+        msgs[msgs.length - 1] = { ...last, content: last.content + token }
         return msgs
       }),
       // onToolStart
@@ -52,23 +60,13 @@ export default function Chat() {
       // onToolEnd — no-op (pill stays)
       () => {},
       // onDone
-      () => {
-        setMessages((prev) => {
-          const msgs = [...prev]
-          msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], isStreaming: false }
-          return msgs
-        })
-        setStreaming(false)
-      },
+      () => { updateLast({ isStreaming: false }); setStreaming(false) },
       // onError
-      (msg) => {
-        setMessages((prev) => {
-          const msgs = [...prev]
-          msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: `⚠️ ${msg}`, isStreaming: false }
-          return msgs
-        })
-        setStreaming(false)
-      },
+      (msg) => { updateLast({ content: `⚠️ ${msg}`, isStreaming: false }); setStreaming(false) },
+      // onRouting — LLaMA handed off to Qwen
+      () => updateLast({ isRouting: true }),
+      // onDashboard — Qwen generated a chart
+      (url) => updateLast({ dashboardUrl: url }),
     )
   }
 

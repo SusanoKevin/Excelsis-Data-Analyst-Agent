@@ -1,23 +1,16 @@
 """
-LangGraph ReAct agent for Excelsis 360.
+Two-model pipeline for Excelsis 360.
 
-Two models are used:
-- Analysis model (qwen2.5-coder:7b): drives the ReAct loop with tool calling
-- Chat model (llama3.1:8b): lightweight conversational replies without tools
-
-Usage
------
-    from src.agent import ExcelsisAgent
-    from src.security import UserContext, Role
-
-    agent = ExcelsisAgent(store=store, vector_store=vec)
-    answer = agent.ask("Which classes are at risk?", user=UserContext("alice", Role.TEACHER, ["10A"]))
-    reply  = agent.chat("Thanks, that was helpful!")
+Request flow:
+  User → LLaMA (classifier) → answer directly (streaming)
+                             → Qwen ReAct analyst (streaming) → text + optional dashboard
 """
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from typing import Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -27,25 +20,58 @@ from langgraph.prebuilt import create_react_agent
 from .security import ADMIN_USER, UserContext
 from .tools import ALL_TOOLS
 
-SYSTEM_PROMPT = """You are an expert School Attendance Analyst for Excelsis 360.
+# --------------------------------------------------------------------------- #
+# Prompts                                                                      #
+# --------------------------------------------------------------------------- #
 
-Your job is to help school administrators understand attendance patterns and take action.
+CLASSIFIER_PROMPT = """You are a query router for the Excelsis 360 school attendance system.
+
+Decide whether the query needs live attendance database data.
+
+Route to the data analyst for:
+- Attendance figures, rates, trends, or statistics from the database
+- At-risk student identification or class comparisons
+- Requests for charts, dashboards, or visualisations
+- Questions about specific classes, grades, or students
+
+Answer directly for:
+- Greetings, thanks, or small talk
+- Conceptual questions ("what does at-risk mean?")
+- General advice not requiring live data
+- Follow-ups that don't need new data
+
+Respond with ONLY one JSON object, nothing else:
+{"action": "answer"}
+or
+{"action": "route"}"""
+
+CHAT_PROMPT = """You are the Excelsis 360 school attendance assistant.
+Answer the user's question helpfully and concisely.
+You do not have access to live attendance data — the system routes data queries to the analyst automatically.
+Keep responses brief and friendly."""
+
+ANALYST_PROMPT = """You are an expert School Attendance Analyst for Excelsis 360.
 
 Guidelines:
 - Always flag any class or student below 75% as "at-risk"
 - Be specific: name classes and students when data is available
-- When recommending interventions, cite research or best practices from the knowledge base
+- When recommending interventions, cite best practices from the knowledge base
 - If you cannot find data, say so clearly — do not make up statistics
-- Think step-by-step: first understand what data is needed, then retrieve it, then analyse
+- Think step-by-step: understand what data is needed, retrieve it, then analyse
+- When your answer would benefit from a visual, call generate_dashboard
 
-You have access to:
-- query_attendance     : attendance statistics by class/week/month/student/grade
-- get_at_risk_students : list students below a given attendance threshold
-- search_knowledge_base: semantic search over policies and class summaries
-- get_summary          : high-level attendance overview
-- web_search           : external research and best practices
-"""
+Available tools:
+- query_attendance      : attendance statistics by class/week/month/student/grade
+- get_at_risk_students  : list students below a given attendance threshold
+- search_knowledge_base : semantic search over policies and class summaries
+- get_summary           : high-level attendance overview
+- web_search            : external research and best practices
+- generate_dashboard    : create a query-specific chart and return its URL"""
 
+
+# --------------------------------------------------------------------------- #
+# Helpers                                                                      #
+# --------------------------------------------------------------------------- #
 
 def _make_llm(model: str, temperature: float = 0.1) -> ChatOpenAI:
     return ChatOpenAI(
@@ -56,6 +82,25 @@ def _make_llm(model: str, temperature: float = 0.1) -> ChatOpenAI:
     )
 
 
+def _parse_action(text: str) -> str:
+    """Return 'answer' or 'route' from the classifier's JSON response."""
+    text = re.sub(r"```[a-z]*\n?", "", text).strip()
+    match = re.search(r"\{[^}]*\}", text)
+    if match:
+        try:
+            return json.loads(match.group()).get("action", "route")
+        except json.JSONDecodeError:
+            pass
+    # Heuristic fallback
+    if "answer" in text.lower() and "route" not in text.lower():
+        return "answer"
+    return "route"
+
+
+# --------------------------------------------------------------------------- #
+# Agent                                                                        #
+# --------------------------------------------------------------------------- #
+
 class ExcelsisAgent:
     def __init__(
         self,
@@ -65,63 +110,142 @@ class ExcelsisAgent:
         chat_model: Optional[str] = None,
         max_history: int = 10,
     ) -> None:
-        analysis_model = analysis_model or os.environ.get(
-            "ANALYSIS_MODEL", "qwen2.5-coder:7b"
-        )
-        chat_model = chat_model or os.environ.get(
-            "CHAT_MODEL", "llama3.1:8b"
-        )
+        analysis_model = analysis_model or os.environ.get("ANALYSIS_MODEL", "qwen2.5-coder:7b")
+        chat_model     = chat_model     or os.environ.get("CHAT_MODEL",     "llama3.1:8b")
 
-        analysis_llm = _make_llm(analysis_model, temperature=0.1)
-        self._chat_llm = _make_llm(chat_model, temperature=0.3)
+        # LLaMA: classifier (deterministic) + conversationalist (creative)
+        self._classifier_llm = _make_llm(chat_model, temperature=0.0)
+        self._chat_llm       = _make_llm(chat_model, temperature=0.4)
 
+        # Qwen: ReAct analyst with tools
         self._graph = create_react_agent(
-            model=analysis_llm,
+            model=_make_llm(analysis_model, temperature=0.1),
             tools=ALL_TOOLS,
-            prompt=SystemMessage(content=SYSTEM_PROMPT),
+            prompt=SystemMessage(content=ANALYST_PROMPT),
         )
-        self._store = store
+
+        self._store        = store
         self._vector_store = vector_store
         self._history: list = []
-        self._max_history = max_history
+        self._max_history   = max_history
 
-    def ask(self, query: str, user: Optional[UserContext] = None) -> str:
-        """Run the ReAct analysis agent (qwen2.5-coder) with tool access."""
-        user = user or ADMIN_USER
-        config = {
+    # --- Internal helpers ---
+
+    def _build_config(self, user: UserContext) -> dict:
+        return {
             "configurable": {
-                "user_context":  user,
-                "store":         self._store,
-                "vector_store":  self._vector_store,
+                "user_context": user,
+                "store":        self._store,
+                "vector_store": self._vector_store,
             }
         }
 
-        messages = list(self._history[-self._max_history:]) + [HumanMessage(content=query)]
-
-        result = self._graph.invoke({"messages": messages}, config=config)
-
-        final_msg = result["messages"][-1]
-        answer = final_msg.content if isinstance(final_msg, AIMessage) else str(final_msg)
-
-        self._history.append(HumanMessage(content=query))
-        self._history.append(AIMessage(content=answer))
+    def _append_history(self, human: str, ai: str) -> None:
+        self._history.append(HumanMessage(content=human))
+        self._history.append(AIMessage(content=ai))
         if len(self._history) > self._max_history * 2:
             self._history = self._history[-(self._max_history * 2):]
 
+    def _classify(self, message: str) -> str:
+        """Ask LLaMA to classify the query. Returns 'answer' or 'route'."""
+        msgs = [
+            SystemMessage(content=CLASSIFIER_PROMPT),
+            *self._history[-4:],          # small context for fast classification
+            HumanMessage(content=message),
+        ]
+        return _parse_action(self._classifier_llm.invoke(msgs).content)
+
+    # --- Synchronous API (notebook / MCP) ---
+
+    def ask(self, query: str, user: Optional[UserContext] = None) -> str:
+        """Route query through LLaMA classifier, then answer or delegate to Qwen."""
+        user   = user or ADMIN_USER
+        action = self._classify(query)
+
+        if action == "answer":
+            msgs = [
+                SystemMessage(content=CHAT_PROMPT),
+                *self._history[-self._max_history:],
+                HumanMessage(content=query),
+            ]
+            response = self._chat_llm.invoke(msgs)
+            answer   = response.content if hasattr(response, "content") else str(response)
+            self._append_history(query, answer)
+            return answer
+
+        config   = self._build_config(user)
+        messages = list(self._history[-self._max_history:]) + [HumanMessage(content=query)]
+        result   = self._graph.invoke({"messages": messages}, config=config)
+        final    = result["messages"][-1]
+        answer   = final.content if isinstance(final, AIMessage) else str(final)
+        self._append_history(query, answer)
         return answer
 
     def chat(self, message: str) -> str:
-        """Send a plain conversational message to the chat model (llama3.1) without tools."""
+        return self.ask(message)
+
+    # --- Async streaming API (/chat/stream SSE) ---
+
+    async def astream_events(self, message: str, user: Optional[UserContext] = None):
+        """
+        Async generator yielding SSE-ready dicts.
+
+        Event types emitted:
+          {"type": "routing"}                             LLaMA routed to Qwen analyst
+          {"type": "token",     "content": "..."}         text token (from either model)
+          {"type": "tool_start","tool":    "..."}         Qwen calling a tool
+          {"type": "tool_end",  "tool":    "..."}         tool finished
+          {"type": "dashboard", "url":     "/dashboards/…"} dashboard PNG ready
+        """
+        user   = user or ADMIN_USER
+        action = self._classify(message)
+
+        if action == "answer":
+            msgs = [
+                SystemMessage(content=CHAT_PROMPT),
+                *self._history[-self._max_history:],
+                HumanMessage(content=message),
+            ]
+            full = ""
+            async for chunk in self._chat_llm.astream(msgs):
+                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if token:
+                    full += token
+                    yield {"type": "token", "content": token}
+            self._append_history(message, full)
+            return
+
+        yield {"type": "routing"}
+
+        config   = self._build_config(user)
         messages = list(self._history[-self._max_history:]) + [HumanMessage(content=message)]
-        response = self._chat_llm.invoke(messages)
-        answer = response.content if hasattr(response, "content") else str(response)
+        full     = ""
 
-        self._history.append(HumanMessage(content=message))
-        self._history.append(AIMessage(content=answer))
-        if len(self._history) > self._max_history * 2:
-            self._history = self._history[-(self._max_history * 2):]
+        async for event in self._graph.astream_events(
+            {"messages": messages},
+            config=config,
+            version="v2",
+        ):
+            kind = event.get("event", "")
 
-        return answer
+            if kind == "on_chat_model_stream":
+                chunk = event.get("data", {}).get("chunk")
+                if chunk and hasattr(chunk, "content") and chunk.content:
+                    full += chunk.content
+                    yield {"type": "token", "content": chunk.content}
+
+            elif kind == "on_tool_start":
+                yield {"type": "tool_start", "tool": event.get("name", "")}
+
+            elif kind == "on_tool_end":
+                name = event.get("name", "")
+                yield {"type": "tool_end", "tool": name}
+                if name == "generate_dashboard":
+                    output = event.get("data", {}).get("output", "")
+                    if output and output.startswith("/dashboards/"):
+                        yield {"type": "dashboard", "url": output}
+
+        self._append_history(message, full)
 
     def reset_history(self) -> None:
         self._history.clear()
