@@ -35,7 +35,6 @@ class Permission(str, Enum):
     READ_ALL_CLASSES  = "read_all_classes"
     READ_AT_RISK      = "read_at_risk"
     GENERATE_DASHBOARD = "generate_dashboard"
-    WEB_SEARCH        = "web_search"
     INGEST_DATA       = "ingest_data"
     VIEW_AUDIT_LOG    = "view_audit_log"
 
@@ -57,7 +56,6 @@ ROLE_PERMISSIONS: dict[Role, set[Permission]] = {
         Permission.READ_OWN_CLASSES,
         Permission.READ_AT_RISK,
         Permission.GENERATE_DASHBOARD,
-        Permission.WEB_SEARCH,
     },
     Role.VIEWER: {
         Permission.READ_OWN_CLASSES,

@@ -7,7 +7,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 ## Features
 
 - **Natural-language chat** — ask questions about attendance in plain English; the analysis model reasons across multiple tools and streams the answer token-by-token
-- **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, vector knowledge base, web search) and in what order
+- **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, vector knowledge base) and in what order
 - **Single-model setup** — `mistral-small:22b` handles both data analysis/tool calling and conversational replies via a unified Ollama pipeline
 - **ChromaDB vector search** — semantic search over intervention policy documents and indexed class summaries using Ollama embeddings (`nomic-embed-text`)
 - **Role-based access control** — four roles (admin, counselor, teacher, viewer) enforced at both the tool and data level; teachers only ever see their own classes
@@ -94,7 +94,6 @@ cp .env.example .env
 Edit `.env` and fill in as needed:
 
 ```env
-TAVILY_API_KEY=tvly-...           # Optional — enables web search tool
 JWT_SECRET=change-me-in-production
 ADMIN_PASSWORD=your-admin-password
 ```
@@ -136,7 +135,6 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `TAVILY_API_KEY` | No | — | Tavily web search (enables the web search tool) |
 | `MODEL` | No | `mistral-small:22b` | Ollama model for the ReAct agent |
 | `EMBED_MODEL` | No | `nomic-embed-text` | Ollama embedding model |
 | `CHROMA_PATH` | No | `./data/chroma_db` | ChromaDB persistence directory |
@@ -165,12 +163,12 @@ Served by Ollama. Used by ChromaDB for semantic search over intervention policy 
 
 Access is enforced at two levels: the tool is blocked before it runs, and query results are filtered to only include rows the user is allowed to see.
 
-| Role | Own classes | At-risk list | Web search | Upload data | Audit log |
-|---|---|---|---|---|---|
-| `admin` | ✓ all | ✓ | ✓ | ✓ | ✓ |
-| `counselor` | ✓ assigned | ✓ | ✓ | — | — |
-| `teacher` | ✓ assigned | — | — | ✓ | — |
-| `viewer` | ✓ assigned | — | — | — | — |
+| Role | Own classes | At-risk list | Upload data | Audit log |
+|---|---|---|---|---|
+| `admin` | ✓ all | ✓ | ✓ | ✓ |
+| `counselor` | ✓ assigned | ✓ | — | — |
+| `teacher` | ✓ assigned | — | ✓ | — |
+| `viewer` | ✓ assigned | — | — | — |
 
 Users are managed through the **Users** page (admin only) or directly in `api/users.json`.
 

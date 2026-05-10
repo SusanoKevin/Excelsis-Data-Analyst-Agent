@@ -14,9 +14,7 @@ Claude Code config (~/.claude/settings.json or .claude/settings.json):
           "args": ["-m", "src.mcp_server"],
           "cwd": "/path/to/Excelsis_Attendance-Agent",
           "env": {
-            "TAVILY_API_KEY":      "tvly-...",
-            "ANALYSIS_MODEL":      "qwen2.5-coder:7b",
-            "CHAT_MODEL":          "llama3.1:8b",
+            "MODEL":               "mistral-small:22b",
             "MCP_USER_ROLE":       "admin",
             "MCP_ALLOWED_CLASSES": ""
           }

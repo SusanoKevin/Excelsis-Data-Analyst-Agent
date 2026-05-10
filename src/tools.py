@@ -12,8 +12,6 @@ Security is enforced at two levels:
 from __future__ import annotations
 
 import json
-import os
-from typing import Optional
 
 import pandas as pd
 from langchain_core.runnables import RunnableConfig
@@ -153,33 +151,6 @@ def get_summary(config: RunnableConfig = None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tool: web_search
-# ---------------------------------------------------------------------------
-
-@tool
-def web_search(query: str, config: RunnableConfig = None) -> str:
-    """
-    Search the web for attendance best practices, interventions, or research.
-    Use this when you need external knowledge not in the local database.
-    """
-    user = _user(config)
-    security.require(user, Permission.WEB_SEARCH, "tavily")
-
-    key = os.environ.get("TAVILY_API_KEY", "")
-    if not key:
-        return "TAVILY_API_KEY not set — web search unavailable."
-
-    from langchain_community.tools.tavily_search import TavilySearchResults
-
-    results = TavilySearchResults(api_key=key, max_results=3).invoke(query)
-    if not results:
-        return "No results found."
-    return "\n---\n".join(
-        f"{r.get('url', '')}\n{r.get('content', '')[:500]}" for r in results
-    )
-
-
-# ---------------------------------------------------------------------------
 # Tool: generate_dashboard
 # ---------------------------------------------------------------------------
 
@@ -245,6 +216,5 @@ ALL_TOOLS = [
     get_at_risk_students,
     search_knowledge_base,
     get_summary,
-    web_search,
     generate_dashboard,
 ]
