@@ -8,7 +8,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 
 - **Natural-language chat** — ask questions about attendance in plain English; the analysis model reasons across multiple tools and streams the answer token-by-token
 - **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, vector knowledge base, web search) and in what order
-- **Dual-model setup** — `qwen2.5-coder:7b` handles data analysis and tool calling; `llama3.1:8b` handles lightweight conversational replies
+- **Single-model setup** — `mistral-small:22b` handles both data analysis/tool calling and conversational replies via a unified Ollama pipeline
 - **ChromaDB vector search** — semantic search over intervention policy documents and indexed class summaries using Ollama embeddings (`nomic-embed-text`)
 - **Role-based access control** — four roles (admin, counselor, teacher, viewer) enforced at both the tool and data level; teachers only ever see their own classes
 - **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
@@ -23,8 +23,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 
 | Layer | Technology |
 |---|---|
-| Analysis LLM | `qwen2.5-coder:7b` via Ollama (`langchain-openai`) |
-| Chat LLM | `llama3.1:8b` via Ollama (`langchain-openai`) |
+| LLM | `mistral-small:22b` via Ollama (`langchain-ollama`) |
 | Agent | LangGraph ReAct (`create_react_agent`) |
 | Vector DB | ChromaDB + Ollama embeddings (`nomic-embed-text`) |
 | Backend | FastAPI + Uvicorn |
@@ -55,7 +54,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 │   ├── data_store.py     # AttendanceDataStore (ingest, stats, at-risk)
 │   ├── vector_store.py   # AttendanceVectorStore (ChromaDB + Ollama embeddings)
 │   ├── tools.py          # LangGraph tools (5 tools, all security-aware)
-│   ├── agent.py          # ExcelsisAgent — dual-model LangGraph ReAct agent
+│   ├── agent.py          # ExcelsisAgent — LangGraph ReAct agent (mistral-small:22b)
 │   ├── dashboard.py      # Dashboard builder (matplotlib/seaborn)
 │   └── mcp_server.py     # FastMCP server for Claude Code
 │
@@ -80,8 +79,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 Download Ollama from [ollama.com](https://ollama.com) and pull the required models:
 
 ```bash
-ollama pull qwen2.5-coder:7b
-ollama pull llama3.1:8b
+ollama pull mistral-small:22b
 ollama pull nomic-embed-text
 ```
 
@@ -139,8 +137,7 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `TAVILY_API_KEY` | No | — | Tavily web search (enables the web search tool) |
-| `ANALYSIS_MODEL` | No | `qwen2.5-coder:7b` | Ollama model for the ReAct analysis agent |
-| `CHAT_MODEL` | No | `llama3.1:8b` | Ollama model for lightweight conversational replies |
+| `MODEL` | No | `mistral-small:22b` | Ollama model for the ReAct agent |
 | `EMBED_MODEL` | No | `nomic-embed-text` | Ollama embedding model |
 | `CHROMA_PATH` | No | `./data/chroma_db` | ChromaDB persistence directory |
 | `ATTENDANCE_DATA_PATH` | No | `./data/attendance` | Directory of attendance files to load on startup |
@@ -154,13 +151,9 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 
 All models run locally via [Ollama](https://ollama.com). No API keys or internet access required at inference time.
 
-### Analysis model — `qwen2.5-coder:7b`
+### LLM — `mistral-small:22b`
 
-Drives the LangGraph ReAct loop. Strong tool/function calling support handles all data queries, at-risk identification, dashboard requests, and knowledge-base lookups.
-
-### Chat model — `llama3.1:8b`
-
-Handles lightweight conversational replies that don't require tool access — greetings, clarifications, and general questions.
+Drives the LangGraph ReAct loop via `ChatOllama`. Handles both tool calling (data queries, at-risk identification, dashboard requests, knowledge-base lookups) and direct conversational replies in a single unified pipeline.
 
 ### Embeddings — `nomic-embed-text`
 
