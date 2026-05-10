@@ -1,15 +1,13 @@
 """
 ChromaDB vector store backed by Ollama embeddings.
 
-Collections
------------
-policies            – intervention strategies, school attendance policies
-attendance_summaries – per-class/student summaries indexed for semantic search
+Collections:
+  policies            – intervention strategies, school attendance policies
+  attendance_summaries – per-class/student summaries indexed for semantic search
 
-Security
---------
-search_records() accepts an `allowed_classes` list; ChromaDB's metadata
-$in filter ensures the query never touches rows outside that set.
+Security:
+  search_records() accepts an `allowed_classes` list; ChromaDB's metadata
+  $in filter ensures the query never touches rows outside that set.
 """
 
 from __future__ import annotations
@@ -26,7 +24,6 @@ from langchain_core.documents import Document
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 CHROMA_PATH = Path(os.getenv("CHROMA_PATH", "./data/chroma_db"))
 
-# Built-in seed documents for attendance intervention strategies
 _SEED_POLICIES = [
     {
         "text": (
@@ -90,14 +87,10 @@ class AttendanceVectorStore:
         )
         self._seed_policies()
 
-    # ------------------------------------------------------------------
-    # Policies collection
-    # ------------------------------------------------------------------
-
     def _seed_policies(self) -> None:
         existing = self._policies.get(limit=1)
         if existing and existing["ids"]:
-            return  # already seeded
+            return
         docs = [
             Document(page_content=p["text"], metadata=p["metadata"])
             for p in _SEED_POLICIES
@@ -107,17 +100,8 @@ class AttendanceVectorStore:
         except Exception as e:
             print(f"[vector_store] Could not seed policy documents: {e}")
 
-    def add_policy_docs(self, texts: list[str], metadatas: Optional[list[dict]] = None) -> None:
-        metas = metadatas or [{} for _ in texts]
-        docs = [Document(page_content=t, metadata=m) for t, m in zip(texts, metas)]
-        self._policies.add_documents(docs)
-
     def search_policies(self, query: str, k: int = 3) -> list[Document]:
         return self._policies.similarity_search(query, k=k)
-
-    # ------------------------------------------------------------------
-    # Attendance summaries collection (security-aware)
-    # ------------------------------------------------------------------
 
     def index_store_summaries(self, store) -> int:
         """Index per-class summaries from an AttendanceDataStore."""
@@ -151,11 +135,6 @@ class AttendanceVectorStore:
         k: int = 4,
         allowed_classes: Optional[list[str]] = None,
     ) -> list[Document]:
-        """
-        Semantic search over attendance summaries.
-        If allowed_classes is provided, results are restricted to those classes —
-        ChromaDB's metadata filter enforces this at the database layer.
-        """
         where = {"class": {"$in": allowed_classes}} if allowed_classes else None
         return self._records.similarity_search(query, k=k, filter=where)
 

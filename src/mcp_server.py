@@ -36,6 +36,7 @@ HTTP/SSE transport with token-header validation.
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import sys
@@ -55,10 +56,6 @@ from src.data_store import AttendanceDataStore
 from src.security import AccessDeniedError, Role, UserContext, security, Permission
 from src.vector_store import AttendanceVectorStore
 
-# ---------------------------------------------------------------------------
-# Server identity (one user per server process)
-# ---------------------------------------------------------------------------
-
 def _build_mcp_user() -> UserContext:
     uid   = os.getenv("MCP_USER_ID", "mcp_user")
     role  = os.getenv("MCP_USER_ROLE", "viewer").lower()
@@ -73,10 +70,6 @@ def _build_mcp_user() -> UserContext:
 
 MCP_USER = _build_mcp_user()
 
-# ---------------------------------------------------------------------------
-# Shared resources (loaded once at start-up)
-# ---------------------------------------------------------------------------
-
 _DATA_PATH = os.getenv("ATTENDANCE_DATA_PATH", "./data/attendance")
 _CHROMA_PATH = os.getenv("CHROMA_PATH", "./data/chroma_db")
 
@@ -84,10 +77,6 @@ store = AttendanceDataStore(data_path=_DATA_PATH if Path(_DATA_PATH).exists() el
 vec   = AttendanceVectorStore(persist_dir=_CHROMA_PATH)
 vec.index_store_summaries(store)
 agent = ExcelsisAgent(store=store, vector_store=vec)
-
-# ---------------------------------------------------------------------------
-# FastMCP server
-# ---------------------------------------------------------------------------
 
 mcp = FastMCP(
     name="Excelsis 360 Attendance Analyst",
@@ -107,10 +96,6 @@ def _check(permission: Permission, resource: str = "") -> None:
     except AccessDeniedError as e:
         raise RuntimeError(str(e)) from e
 
-
-# ---------------------------------------------------------------------------
-# MCP tools
-# ---------------------------------------------------------------------------
 
 @mcp.tool()
 def ask_analyst(query: str) -> str:
@@ -200,17 +185,12 @@ def audit_log() -> str:
     lines = ["timestamp            | user      | role      | perm                  | resource  | granted"]
     lines += ["-" * 90]
     for e in entries[-100:]:
-        import datetime
         ts = datetime.datetime.fromtimestamp(e["ts"]).strftime("%Y-%m-%d %H:%M:%S")
         lines.append(
             f"{ts} | {e['user']:<9} | {e['role']:<9} | {e['perm']:<21} | {e['resource']:<9} | {e['granted']}"
         )
     return "\n".join(lines)
 
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print(f"Starting Excelsis MCP server as '{MCP_USER.user_id}' ({MCP_USER.role.value})")

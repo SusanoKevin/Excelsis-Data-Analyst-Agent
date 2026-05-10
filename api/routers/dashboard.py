@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 
 from api.deps import get_current_user, get_store
 from api.models import DashboardResponse
+from src.dashboard import build_modern_static_dashboard
 from src.security import UserContext
 
 router = APIRouter()
@@ -14,8 +15,6 @@ DASHBOARD_DIR = Path("data/dashboards")
 
 @router.post("/generate", response_model=DashboardResponse)
 def generate(request: Request, user: UserContext = Depends(get_current_user)):
-    from src.dashboard import build_modern_static_dashboard
-
     store = get_store(request)
     filename = f"dashboard_{uuid.uuid4().hex[:8]}.png"
     out = DASHBOARD_DIR / filename

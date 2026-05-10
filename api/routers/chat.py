@@ -1,4 +1,5 @@
 import json
+import logging
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -29,7 +30,6 @@ async def chat_stream(
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
-            import logging
             logging.getLogger(__name__).exception("Chat stream error")
             yield f"data: {json.dumps({'type': 'error', 'message': f'Model error: {e}'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
