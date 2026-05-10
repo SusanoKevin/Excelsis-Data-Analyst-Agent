@@ -1,15 +1,15 @@
 # Excelsis 360 — Attendance Analyst Agent
 
-AI-powered attendance analysis system built on a LangGraph ReAct agent (Qwen via HuggingFace Inference API), ChromaDB vector search, and a FastAPI + React full-stack web interface.
+AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama local LLMs), ChromaDB vector search, and a FastAPI + React full-stack web interface.
 
 ---
 
 ## Features
 
-- **Natural-language chat** — ask questions about attendance in plain English; the Qwen analysis model reasons across multiple tools and streams the answer token-by-token
+- **Natural-language chat** — ask questions about attendance in plain English; the analysis model reasons across multiple tools and streams the answer token-by-token
 - **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, vector knowledge base, web search) and in what order
-- **Dual-model setup** — Qwen2.5-3B handles data analysis and tool calling; Gemma-2-2B handles lightweight conversational replies
-- **ChromaDB vector search** — semantic search over intervention policy documents and indexed class summaries using local sentence-transformer embeddings
+- **Dual-model setup** — `qwen2.5-coder:7b` handles data analysis and tool calling; `llama3.1:8b` handles lightweight conversational replies
+- **ChromaDB vector search** — semantic search over intervention policy documents and indexed class summaries using Ollama embeddings (`nomic-embed-text`)
 - **Role-based access control** — four roles (admin, counselor, teacher, viewer) enforced at both the tool and data level; teachers only ever see their own classes
 - **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
 - **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, at-risk student table, and admin user management
@@ -23,10 +23,10 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Qwen via
 
 | Layer | Technology |
 |---|---|
-| Analysis LLM | Qwen2.5-3B-Instruct via HuggingFace Inference API (`langchain-huggingface`) |
-| Chat LLM | Gemma-2-2B-IT via HuggingFace Inference API (`langchain-huggingface`) |
+| Analysis LLM | `qwen2.5-coder:7b` via Ollama (`langchain-openai`) |
+| Chat LLM | `llama3.1:8b` via Ollama (`langchain-openai`) |
 | Agent | LangGraph ReAct (`create_react_agent`) |
-| Vector DB | ChromaDB + local sentence-transformer embeddings (`BAAI/bge-base-en-v1.5`) |
+| Vector DB | ChromaDB + Ollama embeddings (`nomic-embed-text`) |
 | Backend | FastAPI + Uvicorn |
 | Auth | JWT (python-jose) + bcrypt |
 | Frontend | React 18 + Vite + Tailwind CSS |
@@ -53,7 +53,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Qwen via
 ├── src/                  # Shared Python backend (used by API + notebook)
 │   ├── security.py       # RBAC: Role, Permission, UserContext, SecurityManager
 │   ├── data_store.py     # AttendanceDataStore (ingest, stats, at-risk)
-│   ├── vector_store.py   # AttendanceVectorStore (ChromaDB + HF embeddings)
+│   ├── vector_store.py   # AttendanceVectorStore (ChromaDB + Ollama embeddings)
 │   ├── tools.py          # LangGraph tools (5 tools, all security-aware)
 │   ├── agent.py          # ExcelsisAgent — dual-model LangGraph ReAct agent
 │   ├── dashboard.py      # Dashboard builder (matplotlib/seaborn)
@@ -75,24 +75,33 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Qwen via
 
 ## Quick Start
 
-### 1. Clone and configure
+### 1. Install and start Ollama
+
+Download Ollama from [ollama.com](https://ollama.com) and pull the required models:
+
+```bash
+ollama pull qwen2.5-coder:7b
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text
+```
+
+Ollama must be running on `http://localhost:11434` before starting the app.
+
+### 2. Clone and configure
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and fill in your keys:
+Edit `.env` and fill in as needed:
 
 ```env
-HF_TOKEN=hf_...                   # Required — HuggingFace API token
 TAVILY_API_KEY=tvly-...           # Optional — enables web search tool
 JWT_SECRET=change-me-in-production
 ADMIN_PASSWORD=your-admin-password
 ```
 
-Get your free HuggingFace token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
-
-### 2. Install Python dependencies
+### 3. Install Python dependencies
 
 ```bash
 python -m venv .venv
@@ -100,21 +109,22 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> The first run will download the `BAAI/bge-base-en-v1.5` embedding model locally (~440 MB). Subsequent starts are instant.
+> Ollama model weights are downloaded on first `ollama pull`. Subsequent starts are instant.
 
-### 3. Install frontend dependencies
+### 4. Install frontend dependencies
 
 ```bash
 cd web && npm install && cd ..
 ```
 
-### 4. Start both servers
+### 5. Start both servers
 
 ```bash
 bash start.sh
 ```
 
 This starts:
+- **Ollama** must already be running (see step 1)
 - **FastAPI** on `http://localhost:8000`
 - **React** on `http://localhost:5173`
 
@@ -128,11 +138,10 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `HF_TOKEN` | Yes | — | HuggingFace API token for both LLM calls |
 | `TAVILY_API_KEY` | No | — | Tavily web search (enables the web search tool) |
-| `ANALYSIS_MODEL` | No | `Qwen/Qwen2.5-3B-Instruct` | HF model ID for the ReAct analysis agent |
-| `CHAT_MODEL` | No | `google/gemma-2-2b-it` | HF model ID for lightweight conversational replies |
-| `EMBED_MODEL` | No | `BAAI/bge-base-en-v1.5` | Local sentence-transformer embedding model |
+| `ANALYSIS_MODEL` | No | `qwen2.5-coder:7b` | Ollama model for the ReAct analysis agent |
+| `CHAT_MODEL` | No | `llama3.1:8b` | Ollama model for lightweight conversational replies |
+| `EMBED_MODEL` | No | `nomic-embed-text` | Ollama embedding model |
 | `CHROMA_PATH` | No | `./data/chroma_db` | ChromaDB persistence directory |
 | `ATTENDANCE_DATA_PATH` | No | `./data/attendance` | Directory of attendance files to load on startup |
 | `AT_RISK_THRESHOLD` | No | `75.0` | Default attendance % threshold for at-risk flagging |
@@ -143,17 +152,19 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 
 ## Models
 
-### Analysis model — `Qwen/Qwen2.5-3B-Instruct`
+All models run locally via [Ollama](https://ollama.com). No API keys or internet access required at inference time.
 
-Drives the LangGraph ReAct loop. Chosen for its strong built-in tool/function calling support at 3B parameters, which is reliable on the HuggingFace free serverless Inference API. Handles all data queries, at-risk identification, dashboard requests, and knowledge-base lookups.
+### Analysis model — `qwen2.5-coder:7b`
 
-### Chat model — `google/gemma-2-2b-it`
+Drives the LangGraph ReAct loop. Strong tool/function calling support handles all data queries, at-risk identification, dashboard requests, and knowledge-base lookups.
 
-Handles lightweight conversational replies that don't require tool access — greetings, clarifications, and general questions. At 2B parameters it responds quickly within free-tier rate limits.
+### Chat model — `llama3.1:8b`
 
-### Embeddings — `BAAI/bge-base-en-v1.5`
+Handles lightweight conversational replies that don't require tool access — greetings, clarifications, and general questions.
 
-Runs locally via `sentence-transformers`. No API key or network call required at query time. Used by ChromaDB for semantic search over intervention policy documents and indexed class summaries.
+### Embeddings — `nomic-embed-text`
+
+Served by Ollama. Used by ChromaDB for semantic search over intervention policy documents and indexed class summaries.
 
 ---
 
