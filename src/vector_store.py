@@ -1,5 +1,5 @@
 """
-ChromaDB vector store backed by HuggingFace sentence-transformer embeddings.
+ChromaDB vector store backed by Ollama embeddings.
 
 Collections
 -----------
@@ -20,10 +20,10 @@ from typing import Optional
 
 import chromadb
 from langchain_chroma import Chroma
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
 
-EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 CHROMA_PATH = Path(os.getenv("CHROMA_PATH", "./data/chroma_db"))
 
 # Built-in seed documents for attendance intervention strategies
@@ -75,11 +75,7 @@ class AttendanceVectorStore:
     def __init__(self, persist_dir: str = str(CHROMA_PATH)) -> None:
         Path(persist_dir).mkdir(parents=True, exist_ok=True)
         self._persist_dir = persist_dir
-        self._embeddings = HuggingFaceEmbeddings(
-            model_name=EMBED_MODEL,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
-        )
+        self._embeddings = OllamaEmbeddings(model=EMBED_MODEL)
         self._client = chromadb.PersistentClient(path=persist_dir)
 
         self._policies = Chroma(
@@ -109,7 +105,7 @@ class AttendanceVectorStore:
         try:
             self._policies.add_documents(docs)
         except Exception as e:
-            print(f"[vector_store] Could not seed policy documents (HF_TOKEN set?): {e}")
+            print(f"[vector_store] Could not seed policy documents: {e}")
 
     def add_policy_docs(self, texts: list[str], metadatas: Optional[list[dict]] = None) -> None:
         metas = metadatas or [{} for _ in texts]
@@ -145,7 +141,7 @@ class AttendanceVectorStore:
         try:
             self._records.add_documents(docs)
         except Exception as e:
-            print(f"[vector_store] Could not index summaries (HF_TOKEN set?): {e}")
+            print(f"[vector_store] Could not index summaries: {e}")
             return 0
         return len(docs)
 

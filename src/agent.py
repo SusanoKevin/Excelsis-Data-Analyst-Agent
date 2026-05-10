@@ -2,8 +2,8 @@
 LangGraph ReAct agent for Excelsis 360.
 
 Two models are used:
-- Analysis model (Qwen/Qwen2.5-3B-Instruct): drives the ReAct loop with tool calling
-- Chat model (google/gemma-2-2b-it): lightweight conversational replies without tools
+- Analysis model (qwen2.5-coder:7b): drives the ReAct loop with tool calling
+- Chat model (llama3.1:8b): lightweight conversational replies without tools
 
 Usage
 -----
@@ -21,7 +21,7 @@ import os
 from typing import Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from .security import ADMIN_USER, UserContext
@@ -47,16 +47,13 @@ You have access to:
 """
 
 
-def _make_endpoint(repo_id: str, max_new_tokens: int = 2048, temperature: float = 0.1) -> ChatHuggingFace:
-    endpoint = HuggingFaceEndpoint(
-        repo_id=repo_id,
-        huggingfacehub_api_token=os.environ.get("HF_TOKEN"),
-        task="text-generation",
-        max_new_tokens=max_new_tokens,
+def _make_llm(model: str, temperature: float = 0.1) -> ChatOpenAI:
+    return ChatOpenAI(
+        model=model,
+        base_url="http://localhost:11434/v1",
+        api_key="ollama",
         temperature=temperature,
-        do_sample=True,
     )
-    return ChatHuggingFace(llm=endpoint)
 
 
 class ExcelsisAgent:
@@ -68,15 +65,15 @@ class ExcelsisAgent:
         chat_model: Optional[str] = None,
         max_history: int = 10,
     ) -> None:
-        analysis_repo = analysis_model or os.environ.get(
-            "ANALYSIS_MODEL", "Qwen/Qwen2.5-3B-Instruct"
+        analysis_model = analysis_model or os.environ.get(
+            "ANALYSIS_MODEL", "qwen2.5-coder:7b"
         )
-        chat_repo = chat_model or os.environ.get(
-            "CHAT_MODEL", "google/gemma-2-2b-it"
+        chat_model = chat_model or os.environ.get(
+            "CHAT_MODEL", "llama3.1:8b"
         )
 
-        analysis_llm = _make_endpoint(analysis_repo, max_new_tokens=2048, temperature=0.1)
-        self._chat_llm = _make_endpoint(chat_repo, max_new_tokens=1024, temperature=0.3)
+        analysis_llm = _make_llm(analysis_model, temperature=0.1)
+        self._chat_llm = _make_llm(chat_model, temperature=0.3)
 
         self._graph = create_react_agent(
             model=analysis_llm,
@@ -89,7 +86,7 @@ class ExcelsisAgent:
         self._max_history = max_history
 
     def ask(self, query: str, user: Optional[UserContext] = None) -> str:
-        """Run the ReAct analysis agent (Qwen) with tool access."""
+        """Run the ReAct analysis agent (qwen2.5-coder) with tool access."""
         user = user or ADMIN_USER
         config = {
             "configurable": {
@@ -114,7 +111,7 @@ class ExcelsisAgent:
         return answer
 
     def chat(self, message: str) -> str:
-        """Send a plain conversational message to the chat model (Gemma) without tools."""
+        """Send a plain conversational message to the chat model (llama3.1) without tools."""
         messages = list(self._history[-self._max_history:]) + [HumanMessage(content=message)]
         response = self._chat_llm.invoke(messages)
         answer = response.content if hasattr(response, "content") else str(response)
