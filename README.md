@@ -233,7 +233,7 @@ source .venv/bin/activate
 jupyter notebook Excelsis.ipynb
 ```
 
-Run cells in order (1 → 10). The notebook uses the same `src/` modules as the web backend. After loading data in Cell 6, call `vec.index_store_summaries(store)` to make class summaries searchable via the vector DB.
+Run cells in order (1 → 9). The notebook uses the same `src/` modules as the web backend. Cell 2 verifies that Ollama is reachable before continuing. After loading data in Cell 6, call `vec.index_store_summaries(store)` to make class summaries searchable via the vector DB.
 
 To change who the analyst is (and what data they can access), edit `CURRENT_USER` in Cell 5:
 
