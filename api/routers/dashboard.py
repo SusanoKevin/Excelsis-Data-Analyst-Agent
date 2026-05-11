@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from api.deps import get_current_user, get_store
 from api.models import DashboardResponse
 from src.dashboard import build_full_dashboard, write_html
-from src.security import UserContext
+from src.security import Permission, UserContext, security
 
 router = APIRouter()
 
@@ -14,6 +14,7 @@ DASHBOARD_DIR = Path("data/dashboards")
 
 @router.post("/generate", response_model=DashboardResponse)
 def generate(request: Request, user: UserContext = Depends(get_current_user)):
+    security.require(user, Permission.GENERATE_DASHBOARD, "dashboard/generate")
     store = get_store(request)
     fig   = build_full_dashboard(store, period="all",
                                  classes=user.allowed_classes or None)

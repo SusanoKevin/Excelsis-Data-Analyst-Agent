@@ -45,6 +45,7 @@ ROLE_PERMISSIONS: dict[Role, set[Permission]] = {
     Role.TEACHER: {
         Permission.READ_OWN_CLASSES,
         Permission.GENERATE_DASHBOARD,
+        Permission.INGEST_DATA,
     },
     Role.COUNSELOR: {
         Permission.READ_OWN_CLASSES,

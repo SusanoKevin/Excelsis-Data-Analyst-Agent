@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 
 from api.deps import get_current_user, get_store
 from api.models import UploadResponse
-from src.security import Permission, Role, UserContext, security
+from src.security import Permission, UserContext, security
 
 router = APIRouter()
 
@@ -50,15 +50,32 @@ def stats(
     return df.to_dict(orient="records")
 
 
+@router.get("/sparklines")
+def sparklines(
+    request: Request,
+    ids: str,
+    user: UserContext = Depends(get_current_user),
+):
+    security.require(user, Permission.READ_AT_RISK, "sparklines")
+    store = get_store(request)
+    requested = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    if not requested:
+        return {}
+    filtered = security.filter_df(store.merged(), user)
+    if filtered.empty:
+        return {}
+    authorized = {int(sid) for sid in filtered["student_id"].unique()}
+    safe_ids = [sid for sid in requested if sid in authorized]
+    return store.student_weekly_rates(safe_ids)
+
+
 @router.post("/upload", response_model=UploadResponse)
 async def upload(
     request: Request,
     file: UploadFile = File(...),
     user: UserContext = Depends(get_current_user),
 ):
-    if user.role not in (Role.ADMIN, Role.TEACHER):
-        raise HTTPException(status_code=403, detail="Admin or Teacher role required")
-
+    security.require(user, Permission.INGEST_DATA, "upload")
     content = await file.read()
     name = file.filename or "upload"
     suffix = name.rsplit(".", 1)[-1].lower()

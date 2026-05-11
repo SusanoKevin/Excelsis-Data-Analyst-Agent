@@ -1,15 +1,3 @@
-"""
-ChromaDB vector store backed by Ollama embeddings.
-
-Collections:
-  policies            – intervention strategies, school attendance policies
-  attendance_summaries – per-class/student summaries indexed for semantic search
-
-Security:
-  search_records() accepts an `allowed_classes` list; ChromaDB's metadata
-  $in filter ensures the query never touches rows outside that set.
-"""
-
 from __future__ import annotations
 
 import os
@@ -109,19 +97,17 @@ class AttendanceVectorStore:
         if df.empty:
             return 0
         col = "class" if "class" in df.columns else df.columns[0]
-        docs: list[Document] = []
-        for _, row in df.iterrows():
-            text = (
-                f"Class {row[col]}: attendance rate {row['attendance_rate']:.1f}%. "
-                f"Total sessions: {int(row['total'])}. "
-                f"Present {int(row['present'])}, Absent {int(row['absent'])}, Late {int(row['late'])}."
+        docs = [
+            Document(
+                page_content=(
+                    f"Class {row[col]}: attendance rate {row['attendance_rate']:.1f}%. "
+                    f"Total sessions: {int(row['total'])}. "
+                    f"Present {int(row['present'])}, Absent {int(row['absent'])}, Late {int(row['late'])}."
+                ),
+                metadata={"class": str(row[col]), "type": "class_summary"},
             )
-            docs.append(
-                Document(
-                    page_content=text,
-                    metadata={"class": str(row[col]), "type": "class_summary"},
-                )
-            )
+            for _, row in df.iterrows()
+        ]
         try:
             self._records.add_documents(docs)
         except Exception as e:

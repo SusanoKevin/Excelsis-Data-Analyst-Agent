@@ -8,6 +8,7 @@ from typing import Optional
 import pandas as pd
 
 VALID_STATUSES = {"present", "absent", "late", "excused"}
+_GLOB_PATTERNS = ("*.csv", "*.xlsx", "*.xls", "*.parquet")
 
 
 def parse_attendance_query(question: str) -> dict:
@@ -36,16 +37,7 @@ class AttendanceDataStore:
     def _load_from_path(self, root: Path) -> None:
         if not root.exists():
             return
-        paths = (
-            [root]
-            if root.is_file()
-            else sorted(
-                list(root.glob("*.csv"))
-                + list(root.glob("*.xlsx"))
-                + list(root.glob("*.xls"))
-                + list(root.glob("*.parquet"))
-            )
-        )
+        paths = [root] if root.is_file() else sorted(p for g in _GLOB_PATTERNS for p in root.glob(g))
         for p in paths:
             if not p.is_file():
                 continue
@@ -105,10 +97,14 @@ class AttendanceDataStore:
         agg["attendance_rate"] = (agg["present"] / agg["total"] * 100).round(1)
         return agg[agg["attendance_rate"] < threshold].sort_values("attendance_rate")
 
-    def compute_stats(self, group_by: str = "class", period: str = "all") -> pd.DataFrame:
+    def compute_stats(self, group_by: str = "class", period: str = "all", classes=None) -> pd.DataFrame:
         df = self.merged()
         if df.empty:
             return pd.DataFrame()
+        if classes and "class" in df.columns:
+            df = df[df["class"].isin(classes)]
+            if df.empty:
+                return pd.DataFrame()
         ref = df["date"].max()  # anchor to latest date in dataset, not wall clock
         if period in ("last_7_days", "this_week"):
             df = df[df["date"] >= ref - timedelta(days=7)]
@@ -123,6 +119,28 @@ class AttendanceDataStore:
         ).reset_index()
         g["attendance_rate"] = (g["present"] / g["total"] * 100).round(1)
         return g
+
+    def student_weekly_rates(self, student_ids: list, weeks: int = 6) -> dict:
+        df = self.merged()
+        if df.empty or not student_ids:
+            return {}
+        df = df[df["student_id"].isin(student_ids)]
+        if df.empty:
+            return {}
+        all_weeks = sorted(df["week"].unique())[-weeks:]
+        df = df[df["week"].isin(all_weeks)]
+        grp = (
+            df.groupby(["student_id", "week"])
+            .agg(total=("status", "count"), present=("is_present", "sum"))
+            .reset_index()
+        )
+        grp["rate"] = (grp["present"] / grp["total"] * 100).round(1)
+        pivot = grp.pivot(index="student_id", columns="week", values="rate").reindex(columns=all_weeks)
+        return {
+            int(sid): [None if pd.isna(v) else float(v) for v in pivot.loc[sid]]
+            if sid in pivot.index else [None] * len(all_weeks)
+            for sid in student_ids
+        }
 
     def summary(self) -> dict:
         df = self.merged()

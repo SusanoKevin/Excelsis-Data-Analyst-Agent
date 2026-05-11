@@ -133,7 +133,6 @@ class TestSecurityBoundary:
         assert "11A"  not in result
 
     def test_viewer_cannot_generate_dashboard(self):
-        from src.security import Role
         from src.tools import generate_dashboard
         viewer = UserContext(user_id="v1", role=Role.VIEWER, allowed_classes=["10A"])
         store  = _make_store()

@@ -1,10 +1,3 @@
-"""
-Excelsis 360 agent — unified Ollama ReAct pipeline.
-
-Request flow:
-  User → mistral-small:22b (native tool calling) → tools → text + optional dashboard
-"""
-
 from __future__ import annotations
 
 import ast
@@ -13,8 +6,8 @@ import os
 import re
 from typing import Optional
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_ollama import ChatOllama
 from langgraph.prebuilt import create_react_agent
 
@@ -64,9 +57,6 @@ class _OllamaWithToolParsing(ChatOllama):
         r'(?:response\s*=\s*)?(?:await\s+)?functions\.(\w+)\((\{.*?\})\)',
         re.DOTALL,
     )
-    # Format 3 / 4: bare_name({...}) or code-block {"code": "name({...})"}
-    _BARE_RE = re.compile(r'^(\w+)\((\{.*\})\)\s*$', re.DOTALL)
-
     # Format 7: "I will use `tool_name` tool" narration without an actual tool call
     _TOOL_NAMES = frozenset({
         "query_attendance", "get_at_risk_students", "search_knowledge_base",
@@ -200,8 +190,6 @@ class _OllamaWithToolParsing(ChatOllama):
         # LangGraph calls _astream (not _agenerate) for astream_events, so without
         # this override tool-call JSON text is never converted to tool_calls and
         # should_continue always returns END.
-        from langchain_core.messages import AIMessage, AIMessageChunk
-        from langchain_core.outputs import ChatGenerationChunk
         chunks = []
         async for chunk in super()._astream(messages, stop=stop, run_manager=run_manager, **kwargs):
             chunks.append(chunk)
@@ -227,6 +215,7 @@ _llm = _OllamaWithToolParsing(
     base_url="http://localhost:11434",
     temperature=0.1,
     num_ctx=8192,
+    keep_alive="10m",
 )
 
 

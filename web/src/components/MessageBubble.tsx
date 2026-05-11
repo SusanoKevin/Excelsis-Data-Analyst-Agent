@@ -17,14 +17,12 @@ export default function MessageBubble({ msg }: Props) {
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-5`}>
       <div className={`max-w-[78%] ${isUser ? 'order-1' : 'order-2'}`}>
 
-        {/* Routing badge */}
         {!isUser && msg.isRouting && (
           <div className="flex items-center gap-1.5 mb-2">
             <span className="text-xs text-stone">analyst</span>
           </div>
         )}
 
-        {/* Tool-use pills */}
         {!isUser && msg.toolsUsed.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {msg.toolsUsed.map((t, i) => (
@@ -38,7 +36,6 @@ export default function MessageBubble({ msg }: Props) {
           </div>
         )}
 
-        {/* Bubble */}
         <div
           className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
             isUser
@@ -52,7 +49,6 @@ export default function MessageBubble({ msg }: Props) {
           )}
         </div>
 
-        {/* Dashboard — seamless with page background */}
         {!isUser && msg.dashboardUrl && (
           <div className="mt-3">
             <iframe
@@ -67,7 +63,7 @@ export default function MessageBubble({ msg }: Props) {
                 href={msg.dashboardUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-stone hover:text-carbon transition-colors"
+                className="text-xs text-stone hover:text-carbon transition-colors rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-link-blue"
               >
                 Open full screen ↗
               </a>

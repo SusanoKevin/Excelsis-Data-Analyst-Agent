@@ -1,37 +1,8 @@
 """
-Excelsis 360 MCP Server — exposes attendance analysis tools to Claude Code.
-
-Run
----
-    python -m src.mcp_server
-
-Claude Code config (~/.claude/settings.json or .claude/settings.json):
-
-    {
-      "mcpServers": {
-        "excelsis": {
-          "command": "python",
-          "args": ["-m", "src.mcp_server"],
-          "cwd": "/path/to/Excelsis_Attendance-Agent",
-          "env": {
-            "MODEL":               "mistral-small:22b",
-            "MCP_USER_ROLE":       "admin",
-            "MCP_ALLOWED_CLASSES": ""
-          }
-        }
-      }
-    }
-
-Authentication
---------------
-Each MCP connection runs as a single user whose identity is set via environment
-variables at server start-up.  For multi-user deployments, start one server
-process per user with the appropriate MCP_USER_* variables, or add an
-HTTP/SSE transport with token-header validation.
-
-  MCP_USER_ID        – e.g. "alice"           (default: "mcp_user")
+Excelsis 360 MCP server. Identity is set at process start via env vars:
+  MCP_USER_ID        – default "mcp_user"
   MCP_USER_ROLE      – admin|teacher|counselor|viewer  (default: "viewer")
-  MCP_ALLOWED_CLASSES – pipe-separated, e.g. "10A|10B"  (default: "" = all, admin only)
+  MCP_ALLOWED_CLASSES – pipe-separated classes, e.g. "10A|10B"  (default: all)
 """
 
 from __future__ import annotations

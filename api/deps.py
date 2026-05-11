@@ -21,9 +21,5 @@ def get_store(request: Request):
     return request.app.state.store
 
 
-def get_vec(request: Request):
-    return request.app.state.vec
-
-
 def get_agent(request: Request):
     return request.app.state.agent

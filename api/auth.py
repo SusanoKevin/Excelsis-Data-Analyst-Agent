@@ -1,12 +1,3 @@
-"""
-User registry (api/users.json) + JWT helpers.
-
-users.json shape:
-{
-  "admin": {"hashed_password": "...", "role": "admin", "allowed_classes": []}
-}
-"""
-
 from __future__ import annotations
 
 import json
@@ -99,7 +90,6 @@ def decode_token(token: str) -> Optional[UserContext]:
         return None
 
 
-# -- User management (admin operations) ------------------------------------
 
 def list_users() -> list[dict]:
     return [

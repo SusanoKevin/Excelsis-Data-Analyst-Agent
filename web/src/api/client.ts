@@ -21,8 +21,6 @@ api.interceptors.response.use(
 
 export default api
 
-// ---------- SSE streaming helper ----------
-
 export async function streamChat(
   message: string,
   onToken: (t: string) => void,

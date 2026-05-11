@@ -10,8 +10,8 @@ export interface Message {
   content: string
   toolsUsed: string[]
   isStreaming?: boolean
-  isRouting?: boolean    // LLaMA handed this query to Qwen
-  dashboardUrl?: string  // URL to a generated dashboard PNG
+  isRouting?: boolean
+  dashboardUrl?: string
 }
 
 export interface AttendanceSummary {

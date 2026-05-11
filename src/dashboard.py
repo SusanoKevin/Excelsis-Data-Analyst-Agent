@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -124,34 +124,7 @@ def write_html(fig: go.Figure, title: str = "Excelsis 360") -> str:
 
 
 def _compute_filtered(store, group_by: str, period: str, classes=None) -> pd.DataFrame:
-    """Compute attendance stats with optional class filtering."""
-    if not classes:
-        return store.compute_stats(group_by, period)
-    raw = store.merged()
-    if raw.empty:
-        return pd.DataFrame()
-    if "class" in raw.columns:
-        raw = raw[raw["class"].isin(classes)]
-    if raw.empty:
-        return pd.DataFrame()
-    ref = raw["date"].max()  # anchor to dataset's latest date, not wall clock
-    if period in ("last_7_days", "this_week"):
-        raw = raw[raw["date"] >= ref - timedelta(days=7)]
-    elif period in ("last_30_days", "this_month"):
-        raw = raw[raw["date"] >= ref - timedelta(days=30)]
-    if raw.empty:
-        return pd.DataFrame()
-    col = group_by if group_by in raw.columns else (
-        "class" if "class" in raw.columns else "student_id"
-    )
-    g = raw.groupby(col).agg(
-        total=("status",     "count"),
-        present=("is_present", "sum"),
-        absent=("is_absent",  "sum"),
-        late=("is_late",    "sum"),
-    ).reset_index()
-    g["attendance_rate"] = (g["present"] / g["total"] * 100).round(1)
-    return g
+    return store.compute_stats(group_by, period, classes=classes)
 
 
 # ── individual chart builders ──────────────────────────────────────────────────
