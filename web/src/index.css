@@ -3,20 +3,21 @@
 @tailwind utilities;
 
 body {
-  background-color: #0f172a;
-  color: #e2e8f0;
-  font-family: 'Inter', 'Segoe UI', sans-serif;
+  background-color: #ffffff;
+  color: #0d0d0d;
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-weight: 400;
+  letter-spacing: normal;
 }
 
-/* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #1e293b; }
-::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+::-webkit-scrollbar-track { background: #f9f9f9; }
+::-webkit-scrollbar-thumb { background: #ececec; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #8f8f8f; }
 
-/* Streaming cursor blink */
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 .cursor-blink::after {
   content: '▌';
   animation: blink 1s step-end infinite;
-  color: #3498db;
+  color: #007aff;
 }

@@ -109,10 +109,11 @@ class AttendanceDataStore:
         df = self.merged()
         if df.empty:
             return pd.DataFrame()
+        ref = df["date"].max()  # anchor to latest date in dataset, not wall clock
         if period in ("last_7_days", "this_week"):
-            df = df[df["date"] >= datetime.utcnow() - timedelta(days=7)]
+            df = df[df["date"] >= ref - timedelta(days=7)]
         elif period in ("last_30_days", "this_month"):
-            df = df[df["date"] >= datetime.utcnow() - timedelta(days=30)]
+            df = df[df["date"] >= ref - timedelta(days=30)]
         col = group_by if group_by in df.columns else ("class" if "class" in df.columns else "student_id")
         g = df.groupby(col).agg(
             total=("status",     "count"),

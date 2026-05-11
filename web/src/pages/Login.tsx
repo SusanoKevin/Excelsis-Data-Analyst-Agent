@@ -32,57 +32,54 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
+    <div className="min-h-screen flex items-center justify-center bg-snow px-4">
       <div className="w-full max-w-sm">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">Excelsis 360</p>
-          <h1 className="text-2xl font-bold text-white">Attendance Analyst</h1>
+
+        <div className="text-center mb-10">
+          <p className="text-xs text-stone uppercase tracking-widest mb-3">Excelsis 360</p>
+          <h1 className="text-2xl font-semibold text-carbon tracking-tight">Attendance Analyst</h1>
         </div>
 
-        <form
-          onSubmit={submit}
-          className="bg-surface border border-border rounded-2xl p-8 space-y-5"
-        >
+        <form onSubmit={submit} className="space-y-4">
           {error && (
-            <p className="text-danger text-sm text-center bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">
+            <p className="text-danger text-sm text-center bg-danger/5 border border-danger/20 rounded-[10px] px-3 py-2">
               {error}
             </p>
           )}
 
           <div>
-            <label className="block text-xs text-slate-400 mb-1.5">Username</label>
+            <label className="block text-xs text-pewter mb-1.5">Username</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              required
-              autoFocus
-              className="w-full bg-[#0f172a] border border-border rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-accent"
+              required autoFocus
               placeholder="admin"
+              className="w-full bg-fog border border-arctic-mist rounded-input px-5 py-3 text-sm text-carbon placeholder-stone focus:outline-none focus:ring-2 focus:ring-link-blue"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-slate-400 mb-1.5">Password</label>
+            <label className="block text-xs text-pewter mb-1.5">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full bg-[#0f172a] border border-border rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-accent"
               placeholder="••••••••"
+              className="w-full bg-fog border border-arctic-mist rounded-input px-5 py-3 text-sm text-carbon placeholder-stone focus:outline-none focus:ring-2 focus:ring-link-blue"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-accent hover:bg-accent/90 disabled:opacity-50 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
+            className="w-full bg-carbon text-white disabled:opacity-40 font-medium py-3 rounded-pill text-sm hover:opacity-90 transition-opacity mt-2"
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
       </div>
     </div>
   )

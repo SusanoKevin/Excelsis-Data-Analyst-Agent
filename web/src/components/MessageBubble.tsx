@@ -5,7 +5,6 @@ const TOOL_LABELS: Record<string, string> = {
   get_at_risk_students: 'At-risk list',
   search_knowledge_base:'Knowledge base',
   get_summary:          'Summary',
-  web_search:           'Web search',
   generate_dashboard:   'Dashboard',
 }
 
@@ -15,27 +14,25 @@ export default function MessageBubble({ msg }: Props) {
   const isUser = msg.role === 'user'
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-5`}>
       <div className={`max-w-[78%] ${isUser ? 'order-1' : 'order-2'}`}>
 
-        {/* Routing badge — shown when LLaMA handed off to Qwen */}
+        {/* Routing badge */}
         {!isUser && msg.isRouting && (
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900/50 border border-purple-500/40 text-purple-300">
-              ⚡ Analyst
-            </span>
+            <span className="text-xs text-stone">analyst</span>
           </div>
         )}
 
-        {/* Tool-use pills (assistant only) */}
+        {/* Tool-use pills */}
         {!isUser && msg.toolsUsed.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {msg.toolsUsed.map((t, i) => (
               <span
                 key={i}
-                className="text-xs px-2 py-0.5 rounded-full bg-navy/60 border border-accent/40 text-accent"
+                className="text-xs px-2.5 py-0.5 rounded-pill border border-arctic-mist text-stone bg-fog"
               >
-                🔧 {TOOL_LABELS[t] ?? t}
+                {TOOL_LABELS[t] ?? t}
               </span>
             ))}
           </div>
@@ -43,34 +40,38 @@ export default function MessageBubble({ msg }: Props) {
 
         {/* Bubble */}
         <div
-          className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+          className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
             isUser
-              ? 'bg-accent text-white rounded-tr-sm'
-              : 'bg-surface text-slate-200 rounded-tl-sm'
+              ? 'bg-carbon text-white rounded-2xl rounded-tr-sm'
+              : 'bg-fog text-carbon rounded-2xl rounded-tl-sm border border-arctic-mist'
           } ${msg.isStreaming ? 'cursor-blink' : ''}`}
         >
           {msg.content || (msg.isStreaming
-            ? (msg.isRouting ? '⚡ Connecting to analyst…' : '')
+            ? (msg.isRouting ? 'Connecting to analyst…' : '')
             : '…'
           )}
         </div>
 
-        {/* Dashboard image — shown when Qwen called generate_dashboard */}
+        {/* Dashboard — seamless with page background */}
         {!isUser && msg.dashboardUrl && (
           <div className="mt-3">
-            <a
-              href={msg.dashboardUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Open full size"
-            >
-              <img
-                src={msg.dashboardUrl}
-                alt="Attendance dashboard"
-                className="rounded-xl border border-border w-full hover:opacity-90 transition-opacity cursor-zoom-in"
-              />
-            </a>
-            <p className="text-xs text-slate-500 mt-1">Click to open full size</p>
+            <iframe
+              src={msg.dashboardUrl}
+              title="Attendance dashboard"
+              className="w-full border-0 block rounded-[10px]"
+              style={{ height: "480px" }}
+              sandbox="allow-scripts allow-same-origin"
+            />
+            <div className="flex justify-end py-1.5">
+              <a
+                href={msg.dashboardUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-stone hover:text-carbon transition-colors"
+              >
+                Open full screen ↗
+              </a>
+            </div>
           </div>
         )}
 

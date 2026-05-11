@@ -1,5 +1,6 @@
 import { createContext, useContext, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import Login from './pages/Login'
 import Chat from './pages/Chat'
 import Dashboard from './pages/Dashboard'
@@ -45,6 +46,7 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
+      <Toaster position="bottom-right" theme="dark" richColors />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />

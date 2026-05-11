@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 import json
-import uuid
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import pandas as pd
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from pathlib import Path
 
-from .dashboard import build_query_dashboard
+from .dashboard import build_query_dashboard, write_html
 from .data_store import parse_attendance_query
 from .security import (
     ADMIN_USER,
@@ -125,22 +120,30 @@ def get_summary(config: RunnableConfig = None) -> str:
 
 @tool
 def generate_dashboard(
-    chart_type: str = "full",
+    chart_type: str = "class_bar",
     group_by: str = "class",
     period: str = "all",
     title: str = "",
     config: RunnableConfig = None,
 ) -> str:
     """
-    Generate a query-specific attendance chart and save it as a PNG.
+    Generate an interactive attendance chart and return its URL.
 
-    chart_type: 'full' (4-panel overview), 'class_bar', 'weekly_trend',
-                'weekday_bar', 'status_donut', 'at_risk_bar', 'grade_bar'
-    group_by:   column to group by — 'class' | 'week' | 'month' | 'day_of_week' | 'grade'
-    period:     'all' | 'last_7_days' | 'last_30_days'
-    title:      descriptive chart title (auto-generated if blank)
+    chart_type — choose the SINGLE most relevant type for the query:
+      'class_bar'    – attendance rate per class (horizontal bar)
+      'weekly_trend' – attendance rate over weeks (line chart)
+      'weekday_bar'  – attendance by day of week
+      'status_donut' – present / absent / late / excused breakdown
+      'at_risk_bar'  – students below the at-risk threshold
+      'grade_bar'    – attendance rate per grade
+      'full'         – 4-panel overview; use ONLY when the user explicitly
+                       asks for a full dashboard or overview of multiple dimensions
 
-    Returns the URL path to the saved PNG, e.g. /dashboards/a1b2c3d4.png
+    group_by:  'class' | 'week' | 'month' | 'day_of_week' | 'grade'
+    period:    'all' | 'last_7_days' | 'last_30_days'
+    title:     descriptive chart title (auto-generated if blank)
+
+    Returns the URL to the interactive HTML chart, e.g. /dashboards/a1b2c3d4.html
     """
     user = _user(config)
     security.require(user, Permission.GENERATE_DASHBOARD, "dashboard")
@@ -157,15 +160,7 @@ def generate_dashboard(
         title=title,
         classes=user.allowed_classes or None,
     )
-
-    out_dir  = Path("data/dashboards")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"dashboard_{uuid.uuid4().hex[:8]}.png"
-    fig.savefig(str(out_dir / filename), dpi=140, bbox_inches="tight",
-                facecolor=fig.get_facecolor())
-    plt.close(fig)
-
-    return f"/dashboards/{filename}"
+    return write_html(fig, title=title or "Excelsis 360")
 
 
 ALL_TOOLS = [
