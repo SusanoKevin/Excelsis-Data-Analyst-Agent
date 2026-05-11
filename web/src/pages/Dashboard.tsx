@@ -19,7 +19,7 @@ function KpiCard({ label, value, sub, featured }: {
         ? 'border border-arctic-mist border-l-4 border-l-carbon'
         : 'border border-arctic-mist'
     }`}>
-      <p className="text-xs text-stone uppercase tracking-widest mb-3">{label}</p>
+      <p className="text-xs text-pewter uppercase tracking-widest mb-3">{label}</p>
       <p className={`text-carbon font-semibold ${featured ? 'text-4xl' : 'text-2xl'}`}>{value}</p>
       {sub && <p className="text-xs text-pewter mt-1">{sub}</p>}
     </div>
@@ -122,7 +122,7 @@ export default function Dashboard() {
               className={`text-sm rounded-[10px] px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue focus-visible:ring-offset-2 ${
                 panelOpen
                   ? 'bg-arctic-mist text-carbon'
-                  : 'bg-fog border border-arctic-mist text-pewter hover:text-carbon hover:border-stone'
+                  : 'bg-fog border border-arctic-mist text-pewter hover:text-carbon hover:border-pewter'
               }`}
             >
               {panelOpen ? 'Close chat' : 'Ask Excelsis'}
@@ -160,7 +160,7 @@ export default function Dashboard() {
                 href={imgUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-stone hover:text-carbon transition-colors"
+                className="text-xs text-pewter hover:text-carbon transition-colors"
               >
                 Open full screen ↗
               </a>
@@ -179,12 +179,12 @@ export default function Dashboard() {
                 <caption className="sr-only">At-risk students below 75% attendance threshold</caption>
                 <thead>
                   <tr className="border-b border-arctic-mist">
-                    <th className="px-5 py-3 text-left text-xs text-stone uppercase tracking-widest">Student</th>
-                    <th className="px-5 py-3 text-left text-xs text-stone uppercase tracking-widest">Class</th>
-                    <th className="px-5 py-3 text-right text-xs text-stone uppercase tracking-widest">Present</th>
-                    <th className="px-5 py-3 text-right text-xs text-stone uppercase tracking-widest">Absent</th>
-                    <th className="px-5 py-3 text-right text-xs text-stone uppercase tracking-widest">Rate</th>
-                    <th className="px-5 py-3 text-left text-xs text-stone uppercase tracking-widest">6-week trend</th>
+                    <th className="px-5 py-3 text-left text-xs text-pewter uppercase tracking-widest">Student</th>
+                    <th className="px-5 py-3 text-left text-xs text-pewter uppercase tracking-widest">Class</th>
+                    <th className="px-5 py-3 text-right text-xs text-pewter uppercase tracking-widest">Present</th>
+                    <th className="px-5 py-3 text-right text-xs text-pewter uppercase tracking-widest">Absent</th>
+                    <th className="px-5 py-3 text-right text-xs text-pewter uppercase tracking-widest">Rate</th>
+                    <th className="px-5 py-3 text-left text-xs text-pewter uppercase tracking-widest">6-week trend</th>
                   </tr>
                 </thead>
                 <tbody>

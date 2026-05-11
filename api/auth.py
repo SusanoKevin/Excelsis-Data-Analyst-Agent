@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+
+_lock = threading.Lock()
 
 import bcrypt as _bcrypt
 from jose import JWTError, jwt
@@ -33,20 +36,24 @@ def _load() -> dict:
 
 
 def _save(users: dict) -> None:
-    USERS_FILE.write_text(json.dumps(users, indent=2))
+    # Atomic write: temp-and-replace is atomic on Linux; prevents partial reads.
+    tmp = USERS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(users, indent=2))
+    tmp.replace(USERS_FILE)
 
 
 def ensure_default_admin() -> None:
-    users = _load()
-    if "admin" not in users:
-        password = os.getenv("ADMIN_PASSWORD", "admin123")
-        users["admin"] = {
-            "hashed_password": _hash(password),
-            "role": "admin",
-            "allowed_classes": [],
-        }
-        _save(users)
-        print("Created default admin user (set ADMIN_PASSWORD in .env to change)")
+    with _lock:
+        users = _load()
+        if "admin" not in users:
+            password = os.getenv("ADMIN_PASSWORD", "admin123")
+            users["admin"] = {
+                "hashed_password": _hash(password),
+                "role": "admin",
+                "allowed_classes": [],
+            }
+            _save(users)
+            print("Created default admin user (set ADMIN_PASSWORD in .env to change)")
 
 
 def authenticate_user(username: str, password: str) -> Optional[UserContext]:
@@ -99,22 +106,24 @@ def list_users() -> list[dict]:
 
 
 def create_user(username: str, password: str, role: str, allowed_classes: list[str]) -> bool:
-    users = _load()
-    if username in users:
-        return False
-    users[username] = {
-        "hashed_password": _hash(password),
-        "role": role,
-        "allowed_classes": allowed_classes,
-    }
-    _save(users)
-    return True
+    with _lock:
+        users = _load()
+        if username in users:
+            return False
+        users[username] = {
+            "hashed_password": _hash(password),
+            "role": role,
+            "allowed_classes": allowed_classes,
+        }
+        _save(users)
+        return True
 
 
 def delete_user(username: str) -> bool:
-    users = _load()
-    if username not in users or username == "admin":
-        return False
-    del users[username]
-    _save(users)
-    return True
+    with _lock:
+        users = _load()
+        if username not in users or username == "admin":
+            return False
+        del users[username]
+        _save(users)
+        return True

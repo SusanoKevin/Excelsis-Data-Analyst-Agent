@@ -37,12 +37,12 @@ export default function ChatPanel({ atRisk, summary, onClose }: Props) {
       <div className="px-4 py-3 border-b border-arctic-mist flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold text-carbon">Ask Excelsis</p>
-          <p className="text-xs text-stone mt-0.5">AI attendance analyst</p>
+          <p className="text-xs text-pewter mt-0.5">AI attendance analyst</p>
         </div>
         <button
           onClick={onClose}
           aria-label="Close chat panel"
-          className="text-stone hover:text-carbon transition-colors w-7 h-7 flex items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
+          className="text-pewter hover:text-carbon transition-colors w-7 h-7 flex items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
         >
           ✕
         </button>
@@ -55,12 +55,12 @@ export default function ChatPanel({ atRisk, summary, onClose }: Props) {
       >
         {messages.length === 0 ? (
           <div className="space-y-2">
-            <p className="text-xs text-stone uppercase tracking-widest mb-3">Suggested</p>
+            <p className="text-xs text-pewter uppercase tracking-widest mb-3">Suggested</p>
             {suggestions.map((s) => (
               <button
                 key={s}
                 onClick={() => handleSend(s)}
-                className="w-full text-left text-sm text-pewter bg-fog border border-arctic-mist hover:border-stone hover:text-carbon px-3 py-2.5 rounded-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue focus-visible:ring-offset-2"
+                className="w-full text-left text-sm text-pewter bg-fog border border-arctic-mist hover:border-pewter hover:text-carbon px-3 py-2.5 rounded-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue focus-visible:ring-offset-2"
               >
                 {s}
               </button>
@@ -83,7 +83,7 @@ export default function ChatPanel({ atRisk, summary, onClose }: Props) {
             disabled={streaming}
             rows={1}
             placeholder="Ask about attendance…"
-            className="flex-1 bg-transparent text-sm text-carbon placeholder-stone resize-none focus:outline-none max-h-28"
+            className="flex-1 bg-transparent text-sm text-carbon placeholder-pewter resize-none focus:outline-none max-h-28"
             style={{ lineHeight: '1.5' }}
           />
           <button
@@ -94,7 +94,7 @@ export default function ChatPanel({ atRisk, summary, onClose }: Props) {
             {streaming ? '…' : 'Send'}
           </button>
         </div>
-        <p className="text-xs text-stone mt-1.5 text-center">Enter to send · Shift+Enter for newline</p>
+        <p className="text-xs text-pewter mt-1.5 text-center">Enter to send · Shift+Enter for newline</p>
       </div>
 
     </aside>

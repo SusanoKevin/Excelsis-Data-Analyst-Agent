@@ -59,7 +59,7 @@ export default function Chat() {
                   <button
                     key={s}
                     onClick={() => handleSend(s)}
-                    className="text-left text-sm text-pewter bg-fog border border-arctic-mist hover:border-stone hover:text-carbon px-4 py-3 rounded-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue focus-visible:ring-offset-2"
+                    className="text-left text-sm text-pewter bg-fog border border-arctic-mist hover:border-pewter hover:text-carbon px-4 py-3 rounded-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue focus-visible:ring-offset-2"
                   >
                     {s}
                   </button>
@@ -83,7 +83,7 @@ export default function Chat() {
               disabled={streaming}
               rows={1}
               placeholder="Ask about attendance…"
-              className="flex-1 bg-transparent text-sm text-carbon placeholder-stone resize-none focus:outline-none max-h-32"
+              className="flex-1 bg-transparent text-sm text-carbon placeholder-pewter resize-none focus:outline-none max-h-32"
               style={{ lineHeight: '1.5' }}
             />
             <button
@@ -94,7 +94,7 @@ export default function Chat() {
               {streaming ? '…' : 'Send'}
             </button>
           </div>
-          <p className="text-xs text-stone mt-2 text-center">
+          <p className="text-xs text-pewter mt-2 text-center">
             Enter to send · Shift+Enter for newline
           </p>
         </div>

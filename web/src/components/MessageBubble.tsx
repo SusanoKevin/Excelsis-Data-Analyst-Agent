@@ -19,7 +19,7 @@ export default function MessageBubble({ msg }: Props) {
 
         {!isUser && msg.isRouting && (
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-xs text-stone">analyst</span>
+            <span className="text-xs text-pewter">analyst</span>
           </div>
         )}
 
@@ -28,7 +28,7 @@ export default function MessageBubble({ msg }: Props) {
             {msg.toolsUsed.map((t, i) => (
               <span
                 key={i}
-                className="text-xs px-2.5 py-0.5 rounded-pill border border-arctic-mist text-stone bg-fog"
+                className="text-xs px-2.5 py-0.5 rounded-pill border border-arctic-mist text-pewter bg-fog"
               >
                 {TOOL_LABELS[t] ?? t}
               </span>
@@ -63,7 +63,7 @@ export default function MessageBubble({ msg }: Props) {
                 href={msg.dashboardUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-stone hover:text-carbon transition-colors rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-link-blue"
+                className="text-xs text-pewter hover:text-carbon transition-colors rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-link-blue"
               >
                 Open full screen ↗
               </a>

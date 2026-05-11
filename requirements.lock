@@ -1,3 +1,7 @@
+# Reproducible lockfile — do not edit manually.
+# To regenerate: pip install -e . && pip freeze > requirements.lock
+# Direct deps live in pyproject.toml.
+
 # --- Vector DB & MCP additions ---
 chromadb>=0.6.0
 langchain-chroma>=0.2.0

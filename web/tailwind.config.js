@@ -8,7 +8,6 @@ export default {
         snow:         '#ffffff',
         fog:          '#f9f9f9',
         pewter:       '#5d5d5d',
-        stone:        '#8f8f8f',
         'arctic-mist':'#ececec',
         'link-blue':  '#007aff',
         success:      '#00a86b',
@@ -16,8 +15,9 @@ export default {
         danger:       '#e74c3c',
       },
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+        sans:  ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        serif: ['"DM Serif Display"', 'Georgia', 'Cambria', 'serif'],
+        mono:  ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
       },
       borderRadius: {
         DEFAULT: '10px',

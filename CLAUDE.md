@@ -65,10 +65,10 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## Environment Setup
 
 ```bash
-ollama pull qwen2.5-coder:7b && ollama pull llama3.1:8b && ollama pull nomic-embed-text
-cp .env.example .env   # TAVILY_API_KEY optional; no LLM API key required
+ollama pull mistral-small:22b && ollama pull nomic-embed-text
+cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock
 cd web && npm install && cd ..
 ```
 
@@ -78,9 +78,7 @@ Required `.env` variables:
 - `JWT_SECRET` — must be changed from the default before any production use
 
 Key optional variables:
-- `TAVILY_API_KEY` — enables the `web_search` agent tool
-- `ANALYSIS_MODEL` — default `qwen2.5-coder:7b`; drives the ReAct agent with tool calling
-- `CHAT_MODEL` — default `llama3.1:8b`; handles lightweight conversational replies
+- `MODEL` — default `mistral-small:22b`; Ollama model used by the ReAct agent
 - `EMBED_MODEL` — default `nomic-embed-text`; Ollama embedding model used by ChromaDB
 - `AT_RISK_THRESHOLD` — default `75.0`
 - `ADMIN_PASSWORD` — default `admin123`; sets the initial admin password on first run
@@ -113,7 +111,7 @@ Run cells in order (1 → 10). After Cell 6 loads data, call `vec.index_store_su
 
 ### Request flow
 
-Browser → React (`web/`) → FastAPI (`api/`) → `ExcelsisAgent` (`src/agent.py`) → LangGraph ReAct loop → tools (`src/tools.py`) → `AttendanceDataStore` / `AttendanceVectorStore` / Tavily
+Browser → React (`web/`) → FastAPI (`api/`) → `ExcelsisAgent` (`src/agent.py`) → LangGraph ReAct loop → tools (`src/tools.py`) → `AttendanceDataStore` / `AttendanceVectorStore`
 
 The `/chat/stream` endpoint uses SSE (`StreamingResponse`); the frontend consumes `on_chat_model_stream`, `on_tool_start`, and `on_tool_end` events from LangGraph's `astream_events`.
 
@@ -125,7 +123,7 @@ Every data access passes through `SecurityManager` twice:
 
 `UserContext` (user_id, role, allowed_classes) flows from JWT → `api/deps.py` → FastAPI Depends → `RunnableConfig["configurable"]["user_context"]` → every LangGraph tool. Tools read it via `config.get("configurable", {}).get("user_context", ADMIN_USER)`.
 
-Role → permission mapping lives in `ROLE_PERMISSIONS` in `security.py`. Teachers get `READ_OWN_CLASSES` + `GENERATE_DASHBOARD` only; the `READ_AT_RISK` and `WEB_SEARCH` permissions require counselor or above.
+Role → permission mapping lives in `ROLE_PERMISSIONS` in `security.py`. Teachers get `READ_OWN_CLASSES` + `GENERATE_DASHBOARD` + `INGEST_DATA`; counselors additionally get `READ_AT_RISK`; admins have all permissions.
 
 ### User management (`api/auth.py` + `api/users.json`)
 

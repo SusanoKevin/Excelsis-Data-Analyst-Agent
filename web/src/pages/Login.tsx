@@ -36,7 +36,7 @@ export default function Login() {
       <div className="w-full max-w-sm">
 
         <div className="text-center mb-10">
-          <p className="text-xs text-stone uppercase tracking-widest mb-3">Excelsis 360</p>
+          <p className="text-xs text-pewter uppercase tracking-widest mb-3">Excelsis 360</p>
           <h1 className="text-2xl font-semibold text-carbon tracking-tight">Attendance Analyst</h1>
         </div>
 
@@ -55,7 +55,7 @@ export default function Login() {
               onChange={(e) => setUsername(e.target.value)}
               required autoFocus
               placeholder="admin"
-              className="w-full bg-fog border border-arctic-mist rounded-input px-5 py-3 text-sm text-carbon placeholder-stone focus:outline-none focus:ring-2 focus:ring-link-blue"
+              className="w-full bg-fog border border-arctic-mist rounded-input px-5 py-3 text-sm text-carbon placeholder-pewter focus:outline-none focus:ring-2 focus:ring-link-blue"
             />
           </div>
 
@@ -67,7 +67,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="••••••••"
-              className="w-full bg-fog border border-arctic-mist rounded-input px-5 py-3 text-sm text-carbon placeholder-stone focus:outline-none focus:ring-2 focus:ring-link-blue"
+              className="w-full bg-fog border border-arctic-mist rounded-input px-5 py-3 text-sm text-carbon placeholder-pewter focus:outline-none focus:ring-2 focus:ring-link-blue"
             />
           </div>
 

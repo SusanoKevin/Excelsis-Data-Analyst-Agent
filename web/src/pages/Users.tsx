@@ -41,7 +41,7 @@ export default function Users() {
     load()
   }
 
-  const fieldClass = "w-full bg-snow border border-arctic-mist rounded-input px-4 py-2.5 text-sm text-carbon placeholder-stone focus:outline-none focus:ring-2 focus:ring-link-blue"
+  const fieldClass = "w-full bg-snow border border-arctic-mist rounded-input px-4 py-2.5 text-sm text-carbon placeholder-pewter focus:outline-none focus:ring-2 focus:ring-link-blue"
 
   return (
     <div className="flex h-screen bg-snow">
@@ -90,14 +90,14 @@ export default function Users() {
                   className="flex items-center justify-between px-5 py-3.5 border-b border-arctic-mist hover:bg-arctic-mist/50 transition-colors">
                   <div>
                     <p className="text-sm text-carbon font-medium">{u.username}</p>
-                    <p className="text-xs text-stone capitalize mt-0.5">
+                    <p className="text-xs text-pewter capitalize mt-0.5">
                       {u.role}
                       {u.allowed_classes.length > 0 && ` · ${u.allowed_classes.join(', ')}`}
                     </p>
                   </div>
                   {u.username !== 'admin' && (
                     <button onClick={() => remove(u.username)}
-                      className="text-xs text-stone hover:text-danger transition-colors">
+                      className="text-xs text-pewter hover:text-danger transition-colors">
                       Remove
                     </button>
                   )}

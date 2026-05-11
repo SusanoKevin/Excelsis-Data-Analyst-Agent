@@ -5,7 +5,7 @@ import { useAuth } from '../App'
 import api from '../api/client'
 
 const link = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center px-3 py-1.5 text-sm rounded-[10px] transition-colors ${
+  `flex items-center px-3 py-2.5 text-sm rounded-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue focus-visible:ring-offset-1 ${
     isActive
       ? 'bg-arctic-mist text-carbon font-medium'
       : 'text-pewter hover:text-carbon hover:bg-arctic-mist'
@@ -39,7 +39,7 @@ export default function Sidebar() {
     <aside className="w-52 min-h-screen bg-fog border-r border-arctic-mist flex flex-col">
       {/* Logo */}
       <div className="px-5 py-6 border-b border-arctic-mist">
-        <p className="text-xs text-stone uppercase tracking-widest mb-1">Excelsis 360</p>
+        <p className="text-xs text-pewter uppercase tracking-widest mb-1">Excelsis 360</p>
         <p className="text-sm text-carbon font-semibold">Attendance Analyst</p>
       </div>
 
@@ -55,7 +55,7 @@ export default function Sidebar() {
       {/* User info + actions */}
       <div className="p-5 border-t border-arctic-mist">
         <p className="text-xs text-carbon font-medium truncate">{user?.userId}</p>
-        <p className="text-xs text-stone capitalize mb-4">{user?.role}</p>
+        <p className="text-xs text-pewter capitalize mb-4">{user?.role}</p>
 
         <input
           ref={fileInput}
@@ -69,14 +69,14 @@ export default function Sidebar() {
           {canUpload && (
             <button
               onClick={() => fileInput.current?.click()}
-              className="text-sm text-pewter hover:text-carbon transition-colors text-left"
+              className="text-sm text-pewter hover:text-carbon transition-colors text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue focus-visible:ring-offset-1"
             >
               Upload data ↑
             </button>
           )}
           <button
             onClick={() => { logout(); navigate('/login') }}
-            className="text-sm text-pewter hover:text-carbon transition-colors text-left"
+            className="text-sm text-pewter hover:text-carbon transition-colors text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue focus-visible:ring-offset-1"
           >
             Sign out →
           </button>
