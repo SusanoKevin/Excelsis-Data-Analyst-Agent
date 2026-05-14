@@ -17,12 +17,7 @@ export default function Login() {
     setLoading(true)
     try {
       const { data } = await api.post('/auth/login', { username, password })
-      login({
-        token:          data.access_token,
-        role:           data.role,
-        userId:         data.user_id,
-        allowedClasses: data.allowed_classes,
-      })
+      login({ token: data.access_token, userId: data.user_id })
       navigate('/chat')
     } catch (err: any) {
       setError(err.response?.data?.detail ?? 'Login failed')

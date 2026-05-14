@@ -4,7 +4,6 @@ import ast
 import json
 import os
 import re
-from typing import Optional
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
@@ -19,28 +18,35 @@ SYSTEM_PROMPT = """You are an expert School Attendance Analyst for Excelsis 360.
 Guidelines:
 - Always flag any class or student below 75% as "at-risk"
 - Be specific: name classes and students when data is available
-- If you cannot find data, say so clearly — never fabricate statistics or URLs
+- If you cannot find data, say so clearly — never fabricate statistics
 - Think step-by-step: retrieve data first, then analyse
 - For greetings or general questions, answer directly without calling tools
-- If the user asks for a chart, dashboard, or visual: you MUST call generate_dashboard — never invent a URL
 
 Tool usage:
-- query_attendance      — attendance statistics
-- get_at_risk_students  — students below a threshold
-- generate_dashboard    — chart or visual requests; always pass a descriptive title
-- search_knowledge_base — policy and intervention advice
-- get_summary           — quick data overview
+- query_attendance       — attendance statistics grouped by class, grade, week, month, or day
+- get_at_risk_students   — students below an attendance threshold
+- update_dashboard_view  — update the live dashboard to show a specific view or filter
+- get_summary            — quick data overview (total records, date range, overall rate)
+- run_sql_query          — ad-hoc T-SQL SELECT against any configured database
 
-Dashboard rules (generate_dashboard):
-- Choose the single most relevant chart_type for the question:
-    class_bar    → "which classes have lowest attendance?"
-    weekly_trend → "show trends over time / weekly attendance"
-    weekday_bar  → "which day has most absences?"
-    status_donut → "breakdown of present / absent / late"
-    at_risk_bar  → "show at-risk students"
-    grade_bar    → "attendance by grade"
-    full         → ONLY for "show me everything" / "full dashboard" / "overview"
-- Pass period='last_30_days' for recent-data questions, 'all' for historical ones.
+Dashboard rules (update_dashboard_view):
+- Call this when the user asks to see a chart, visual, or dashboard view
+- classes: list of class names to focus on (omit or [] for all classes)
+- period:  'all' | 'last_7_days' | 'last_30_days'
+- view:    'overview' | 'class' | 'student'
+- Examples:
+    update_dashboard_view(classes=["10A"], view="class")
+    update_dashboard_view(period="last_30_days", view="overview")
+
+SQL query rules (run_sql_query):
+- Write valid T-SQL (SQL Server syntax): use TOP, DATEPART, DATENAME, FORMAT, CONVERT, ISNULL
+- Always use SELECT — never INSERT, UPDATE, DELETE, DROP, CREATE, or ALTER
+- Primary attendance table: `attendance`
+  Columns: student_id, student_name, class, grade, date (DATE), status ('present'|'absent'|'late'|'excused')
+- Other databases available via the `database` parameter
+- Example: SELECT TOP 20 class, COUNT(*) AS absences
+           FROM attendance WHERE status='absent' AND date >= DATEADD(dd,-30,GETDATE())
+           GROUP BY class ORDER BY absences DESC
 
 CRITICAL: Call tools immediately — NEVER output text like "I will use X tool" or
 "Let me call X" before calling it. Narrating a tool call instead of making one is
@@ -59,8 +65,8 @@ class _OllamaWithToolParsing(ChatOllama):
     )
     # Format 7: "I will use `tool_name` tool" narration without an actual tool call
     _TOOL_NAMES = frozenset({
-        "query_attendance", "get_at_risk_students", "search_knowledge_base",
-        "get_summary", "generate_dashboard",
+        "query_attendance", "get_at_risk_students",
+        "get_summary", "update_dashboard_view", "run_sql_query",
     })
     # Extracts the intent/query from two common announcement patterns
     _INTENT_RE = re.compile(
@@ -166,7 +172,12 @@ class _OllamaWithToolParsing(ChatOllama):
                 continue
             qm = self._INTENT_RE.search(content)
             query = next((g for g in (qm.groups() if qm else ()) if g), content)
-            args = {"query": query.strip()} if name in ("query_attendance", "search_knowledge_base") else {}
+            if name == "query_attendance":
+                args = {"query": query.strip()}
+            elif name == "run_sql_query":
+                args = {"sql": query.strip()}
+            else:
+                args = {}
             return AIMessage(content="", tool_calls=[
                 {"name": name, "args": args, "id": "call_0", "type": "tool_call"}
             ])
@@ -220,23 +231,21 @@ _llm = _OllamaWithToolParsing(
 
 
 class ExcelsisAgent:
-    def __init__(self, store=None, vector_store=None, max_history: int = 10) -> None:
+    def __init__(self, store=None, max_history: int = 10) -> None:
         self._graph = create_react_agent(
             model=_llm,
             tools=ALL_TOOLS,
             prompt=SystemMessage(content=SYSTEM_PROMPT),
         )
-        self._store        = store
-        self._vector_store = vector_store
+        self._store       = store
         self._history: list = []
-        self._max_history   = max_history
+        self._max_history  = max_history
 
     def _build_config(self, user: UserContext) -> dict:
         return {
             "configurable": {
                 "user_context": user,
                 "store":        self._store,
-                "vector_store": self._vector_store,
             }
         }
 
@@ -246,7 +255,7 @@ class ExcelsisAgent:
         if len(self._history) > self._max_history * 2:
             self._history = self._history[-(self._max_history * 2):]
 
-    def ask(self, query: str, user: Optional[UserContext] = None) -> str:
+    def ask(self, query: str, user: UserContext | None = None) -> str:
         user     = user or ADMIN_USER
         config   = self._build_config(user)
         messages = list(self._history[-self._max_history:]) + [HumanMessage(content=query)]
@@ -256,7 +265,7 @@ class ExcelsisAgent:
         self._append_history(query, answer)
         return answer
 
-    async def astream_events(self, message: str, user: Optional[UserContext] = None):
+    async def astream_events(self, message: str, user: UserContext | None = None):
         """
         Async generator yielding SSE-ready dicts.
 
@@ -264,7 +273,7 @@ class ExcelsisAgent:
           {"type": "token",     "content": "..."}
           {"type": "tool_start","tool":    "..."}
           {"type": "tool_end",  "tool":    "..."}
-          {"type": "dashboard", "url":     "/dashboards/…"}
+          {"type": "dashboard_filter", "classes": [...], "period": "...", "view": "..."}
         """
         user     = user or ADMIN_USER
         config   = self._build_config(user)
@@ -290,12 +299,19 @@ class ExcelsisAgent:
             elif kind == "on_tool_end":
                 name = event.get("name", "")
                 yield {"type": "tool_end", "tool": name}
-                if name == "generate_dashboard":
+                if name == "update_dashboard_view":
                     raw = event.get("data", {}).get("output", "")
-                    # LangGraph wraps tool output in a ToolMessage in newer versions
                     output = raw.content if hasattr(raw, "content") else str(raw)
-                    if output and output.startswith("/dashboards/"):
-                        yield {"type": "dashboard", "url": output}
+                    try:
+                        payload = json.loads(output)
+                        yield {
+                            "type":    "dashboard_filter",
+                            "classes": payload.get("classes", []),
+                            "period":  payload.get("period", "all"),
+                            "view":    payload.get("view", "overview"),
+                        }
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
 
         self._append_history(message, full)
 

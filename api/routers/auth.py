@@ -6,7 +6,7 @@ from api.auth import (
 )
 from api.deps import get_current_user
 from api.models import CreateUserRequest, LoginRequest, Token, UserInfo
-from src.security import Role, UserContext
+from src.security import UserContext
 
 router = APIRouter()
 
@@ -17,43 +17,29 @@ def login(body: LoginRequest):
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Incorrect username or password")
-    return Token(
-        access_token=create_access_token(user),
-        role=user.role.value,
-        user_id=user.user_id,
-        allowed_classes=user.allowed_classes,
-    )
+    return Token(access_token=create_access_token(user), user_id=user.user_id)
 
 
 @router.get("/me", response_model=UserInfo)
 def me(user: UserContext = Depends(get_current_user)):
-    return UserInfo(user_id=user.user_id, role=user.role.value,
-                    allowed_classes=user.allowed_classes)
+    return UserInfo(user_id=user.user_id)
 
 
 @router.get("/users")
-def get_users(user: UserContext = Depends(get_current_user)):
-    if user.role != Role.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
-    return list_users()
+def get_users(_: UserContext = Depends(get_current_user)):
+    return [{"username": u} for u in list_users()]
 
 
 @router.post("/users", status_code=201)
-def add_user(body: CreateUserRequest, user: UserContext = Depends(get_current_user)):
-    if user.role != Role.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
-    if body.role not in [r.value for r in Role]:
-        raise HTTPException(status_code=400, detail=f"Invalid role '{body.role}'")
-    ok = create_user(body.username, body.password, body.role, body.allowed_classes)
+def add_user(body: CreateUserRequest, _: UserContext = Depends(get_current_user)):
+    ok = create_user(body.username, body.password)
     if not ok:
         raise HTTPException(status_code=409, detail="Username already exists")
     return {"message": f"User '{body.username}' created"}
 
 
 @router.delete("/users/{username}")
-def remove_user(username: str, user: UserContext = Depends(get_current_user)):
-    if user.role != Role.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
+def remove_user(username: str, _: UserContext = Depends(get_current_user)):
     ok = delete_user(username)
     if not ok:
         raise HTTPException(status_code=404, detail="User not found or cannot delete admin")

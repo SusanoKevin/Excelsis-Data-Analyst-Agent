@@ -1,29 +1,23 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pandas as pd
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from .dashboard import build_query_dashboard, write_html
 from .data_store import parse_attendance_query
-from .security import (
-    ADMIN_USER,
-    Permission,
-    UserContext,
-    security,
-)
-
-
-def _user(config: RunnableConfig) -> UserContext:
-    return config.get("configurable", {}).get("user_context", ADMIN_USER)
 
 
 def _df_to_text(df: pd.DataFrame, max_rows: int = 50) -> str:
     if df.empty:
         return "No data available."
     return df.head(max_rows).to_string(index=False)
+
+
+def _store(config: RunnableConfig):
+    return config["configurable"].get("store")
 
 
 @tool
@@ -37,16 +31,12 @@ def query_attendance(
     Supports periods: all, last_7_days, last_30_days.
     Examples: 'attendance by class', 'weekly trend last 30 days', 'which grade has lowest rate?'
     """
-    user = _user(config)
-    security.require(user, Permission.READ_OWN_CLASSES, "attendance_stats")
-
-    store = config["configurable"].get("store")
+    store = _store(config)
     if store is None:
         return "No data store connected."
 
     p  = parse_attendance_query(query)
     df = store.compute_stats(p["group_by"], p["period"])
-    df = security.filter_df(df, user)
     return _df_to_text(df)
 
 
@@ -59,43 +49,14 @@ def get_at_risk_students(
     Return students whose attendance rate is below the given threshold (default 75%).
     Includes student ID, name (if available), class, and attendance rate.
     """
-    user = _user(config)
-    security.require(user, Permission.READ_AT_RISK, "at_risk_list")
-
-    store = config["configurable"].get("store")
+    store = _store(config)
     if store is None:
         return "No data store connected."
 
-    df = store.get_at_risk(threshold=threshold, grade="all")
-    df = security.filter_df(df, user)
+    df = store.get_at_risk(threshold=threshold)
     if df.empty:
         return f"No students below {threshold}% attendance threshold."
     return _df_to_text(df)
-
-
-@tool
-def search_knowledge_base(
-    query: str,
-    collection: str = "policies",
-    config: RunnableConfig = None,
-) -> str:
-    """
-    Semantic search over the vector knowledge base.
-    collection='policies'  – intervention strategies and best practices (no auth required)
-    collection='records'   – class attendance summaries (restricted to user's classes)
-    """
-    user = _user(config)
-    vec  = config["configurable"].get("vector_store")
-    if vec is None:
-        return "Vector store not initialised."
-
-    if collection == "records":
-        security.require(user, Permission.READ_OWN_CLASSES, "vector_records")
-        docs = vec.search_records(query, k=4, allowed_classes=user.allowed_classes or None)
-    else:
-        docs = vec.search_policies(query, k=3)
-
-    return vec.format_docs(docs)
 
 
 @tool
@@ -104,69 +65,80 @@ def get_summary(config: RunnableConfig = None) -> str:
     Return a high-level summary of all loaded attendance data:
     total records, unique students, date range, overall attendance rate, and classes.
     """
-    user = _user(config)
-    security.require(user, Permission.READ_OWN_CLASSES, "summary")
-
-    store = config["configurable"].get("store")
+    store = _store(config)
     if store is None:
         return "No data store connected."
 
-    summary = store.summary()
-    if user.allowed_classes and "classes" in summary:
-        summary["classes"] = [c for c in summary["classes"] if c in user.allowed_classes]
-
-    return json.dumps(summary, indent=2)
+    return json.dumps(store.summary(), indent=2)
 
 
 @tool
-def generate_dashboard(
-    chart_type: str = "class_bar",
-    group_by: str = "class",
+def update_dashboard_view(
+    classes: list[str] | None = None,
     period: str = "all",
-    title: str = "",
+    view: str = "overview",
     config: RunnableConfig = None,
 ) -> str:
     """
-    Generate an interactive attendance chart and return its URL.
+    Update the live dashboard to show a specific view.
 
-    chart_type — choose the SINGLE most relevant type for the query:
-      'class_bar'    – attendance rate per class (horizontal bar)
-      'weekly_trend' – attendance rate over weeks (line chart)
-      'weekday_bar'  – attendance by day of week
-      'status_donut' – present / absent / late / excused breakdown
-      'at_risk_bar'  – students below the at-risk threshold
-      'grade_bar'    – attendance rate per grade
-      'full'         – 4-panel overview; use ONLY when the user explicitly
-                       asks for a full dashboard or overview of multiple dimensions
+    classes: list of class names to filter by (empty list = all classes)
+    period:  'all' | 'last_7_days' | 'last_30_days'
+    view:    'overview' | 'class' | 'student'
 
-    group_by:  'class' | 'week' | 'month' | 'day_of_week' | 'grade'
-    period:    'all' | 'last_7_days' | 'last_30_days'
-    title:     descriptive chart title (auto-generated if blank)
-
-    Returns the URL to the interactive HTML chart, e.g. /dashboards/a1b2c3d4.html
+    Examples:
+      update_dashboard_view(classes=["10A"], view="class")
+      update_dashboard_view(period="last_30_days")
     """
-    user = _user(config)
-    security.require(user, Permission.GENERATE_DASHBOARD, "dashboard")
+    safe_period = period if period in {"all", "last_7_days", "last_30_days"} else "all"
+    safe_view   = view   if view   in {"overview", "class", "student"}      else "overview"
+    return json.dumps({"classes": classes or [], "period": safe_period, "view": safe_view})
 
-    store = config["configurable"].get("store")
+
+@tool
+def run_sql_query(
+    sql: str,
+    database: str = "",
+    config: RunnableConfig = None,
+) -> str:
+    """
+    Execute an ad-hoc T-SQL SELECT query against a named database.
+    Only SELECT statements are permitted — DML and DDL are blocked.
+    Results are capped at 200 rows.
+
+    database: one of the configured database names (leave blank for the primary attendance_db).
+    sql:      a valid T-SQL SELECT statement using SQL Server syntax.
+
+    Use this when the built-in tools cannot answer a specific question.
+    Example:
+        SELECT TOP 10 class, COUNT(*) AS absences
+        FROM attendance WHERE status='absent'
+        GROUP BY class ORDER BY absences DESC
+    """
+    store = _store(config)
     if store is None:
         return "No data store connected."
 
-    fig = build_query_dashboard(
-        store,
-        chart_type=chart_type,
-        group_by=group_by,
-        period=period,
-        title=title,
-        classes=user.allowed_classes or None,
-    )
-    return write_html(fig, title=title or "Excelsis 360")
+    sql_clean = sql.strip().rstrip(";")
+    if not re.search(r"\bTOP\s+\d+\b", sql_clean, re.IGNORECASE):
+        sql_clean = re.sub(r"(?i)^\s*SELECT\b", "SELECT TOP 200", sql_clean, count=1)
+
+    try:
+        df = store._query(sql_clean, database=database or None)
+    except PermissionError as e:
+        return f"Query blocked: {e}"
+    except Exception as e:
+        return f"Query failed: {e}"
+
+    if df.empty:
+        return "Query returned no rows."
+    return _df_to_text(df, max_rows=200)
 
 
 ALL_TOOLS = [
     query_attendance,
     get_at_risk_students,
-    search_knowledge_base,
     get_summary,
-    generate_dashboard,
+    update_dashboard_view,
+    run_sql_query,
 ]

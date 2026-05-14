@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { streamChat } from '../api/client'
-import { Message } from '../types'
+import { DashboardFilterEvent, Message } from '../types'
 
-export function useChat() {
+export function useChat(onDashboardFilter?: (f: DashboardFilterEvent) => void) {
   const [messages, setMessages] = useState<Message[]>([])
   const [streaming, setStreaming] = useState(false)
 
@@ -37,8 +37,7 @@ export function useChat() {
       () => {},
       () => { updateLast({ isStreaming: false }); setStreaming(false) },
       (msg) => { updateLast({ content: msg, isStreaming: false }); setStreaming(false) },
-      () => updateLast({ isRouting: true }),
-      (url) => updateLast({ dashboardUrl: url }),
+      (f) => { updateLast({ dashboardFilter: f }); onDashboardFilter?.(f) },
     )
   }
 

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
@@ -29,7 +28,7 @@ def parse_attendance_query(question: str) -> dict:
 
 
 class AttendanceDataStore:
-    def __init__(self, data_path: Optional[str] = None) -> None:
+    def __init__(self, data_path: str | None = None) -> None:
         self._datasets: dict[str, dict] = {}
         if data_path is not None:
             self._load_from_path(Path(data_path))
@@ -77,12 +76,12 @@ class AttendanceDataStore:
             return pd.DataFrame()
         return pd.concat([v["df"] for v in self._datasets.values()], ignore_index=True)
 
-    def get_at_risk(self, threshold: float = 75.0, grade: str = "all") -> pd.DataFrame:
+    def get_at_risk(self, threshold: float = 75.0, classes=None) -> pd.DataFrame:
         df = self.merged()
         if df.empty:
             return pd.DataFrame()
-        if grade != "all" and "class" in df.columns:
-            df = df[df["class"].str.upper() == grade.upper()]
+        if classes and "class" in df.columns:
+            df = df[df["class"].isin(classes)]
         agg_cols: dict = {
             "total":   ("status",     "count"),
             "present": ("is_present", "sum"),
@@ -106,9 +105,9 @@ class AttendanceDataStore:
             if df.empty:
                 return pd.DataFrame()
         ref = df["date"].max()  # anchor to latest date in dataset, not wall clock
-        if period in ("last_7_days", "this_week"):
+        if period == "last_7_days":
             df = df[df["date"] >= ref - timedelta(days=7)]
-        elif period in ("last_30_days", "this_month"):
+        elif period == "last_30_days":
             df = df[df["date"] >= ref - timedelta(days=30)]
         col = group_by if group_by in df.columns else ("class" if "class" in df.columns else "student_id")
         g = df.groupby(col).agg(

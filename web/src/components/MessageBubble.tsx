@@ -1,11 +1,20 @@
-import { Message } from '../types'
+import { DashboardFilterEvent, Message } from '../types'
 
 const TOOL_LABELS: Record<string, string> = {
-  query_attendance:     'Attendance data',
-  get_at_risk_students: 'At-risk list',
-  search_knowledge_base:'Knowledge base',
-  get_summary:          'Summary',
-  generate_dashboard:   'Dashboard',
+  query_attendance:      'Attendance data',
+  get_at_risk_students:  'At-risk list',
+  get_summary:           'Summary',
+  update_dashboard_view: 'Dashboard filter',
+  run_sql_query:         'SQL query',
+}
+
+function buildDashboardUrl(f: DashboardFilterEvent): string {
+  const params = new URLSearchParams()
+  if (f.classes.length > 0) params.set('classes', f.classes.join(','))
+  if (f.period !== 'all') params.set('period', f.period)
+  if (f.view !== 'overview') params.set('view', f.view)
+  const qs = params.toString()
+  return `/dashboard${qs ? `?${qs}` : ''}`
 }
 
 interface Props { msg: Message }
@@ -16,12 +25,6 @@ export default function MessageBubble({ msg }: Props) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-5`}>
       <div className={`max-w-[78%] ${isUser ? 'order-1' : 'order-2'}`}>
-
-        {!isUser && msg.isRouting && (
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-xs text-pewter">analyst</span>
-          </div>
-        )}
 
         {!isUser && msg.toolsUsed.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
@@ -43,31 +46,17 @@ export default function MessageBubble({ msg }: Props) {
               : 'bg-fog text-carbon rounded-2xl rounded-tl-sm border border-arctic-mist'
           } ${msg.isStreaming ? 'cursor-blink' : ''}`}
         >
-          {msg.content || (msg.isStreaming
-            ? (msg.isRouting ? 'Connecting to analyst…' : '')
-            : '…'
-          )}
+          {msg.content || (msg.isStreaming ? '' : '…')}
         </div>
 
-        {!isUser && msg.dashboardUrl && (
+        {!isUser && msg.dashboardFilter && (
           <div className="mt-3">
-            <iframe
-              src={msg.dashboardUrl}
-              title="Attendance dashboard"
-              className="w-full border-0 block rounded-[10px]"
-              style={{ height: "480px" }}
-              sandbox="allow-scripts allow-same-origin"
-            />
-            <div className="flex justify-end py-1.5">
-              <a
-                href={msg.dashboardUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-pewter hover:text-carbon transition-colors rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-link-blue"
-              >
-                Open full screen ↗
-              </a>
-            </div>
+            <a
+              href={buildDashboardUrl(msg.dashboardFilter)}
+              className="inline-flex items-center gap-2 text-sm bg-fog border border-arctic-mist hover:border-pewter text-carbon rounded-[10px] px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
+            >
+              View in Dashboard ↗
+            </a>
           </div>
         )}
 

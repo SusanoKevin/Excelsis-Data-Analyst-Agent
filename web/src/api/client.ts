@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { DashboardFilterEvent } from '../types'
 
 const api = axios.create({ baseURL: '/' })
 
@@ -23,13 +24,12 @@ export default api
 
 export async function streamChat(
   message: string,
-  onToken: (t: string) => void,
-  onToolStart: (tool: string) => void,
-  onToolEnd: (tool: string) => void,
-  onDone: () => void,
-  onError: (msg: string) => void,
-  onRouting?: () => void,
-  onDashboard?: (url: string) => void,
+  onToken:           (t: string) => void,
+  onToolStart:       (tool: string) => void,
+  onToolEnd:         (tool: string) => void,
+  onDone:            () => void,
+  onError:           (msg: string) => void,
+  onDashboardFilter?: (f: DashboardFilterEvent) => void,
 ) {
   const token = localStorage.getItem('token')
   const res = await fetch('/chat/stream', {
@@ -41,12 +41,9 @@ export async function streamChat(
     body: JSON.stringify({ message }),
   })
 
-  if (!res.ok) {
-    onError(`Request failed: ${res.status}`)
-    return
-  }
+  if (!res.ok) { onError(`Request failed: ${res.status}`); return }
 
-  const reader = res.body!.getReader()
+  const reader  = res.body!.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
 
@@ -64,14 +61,17 @@ export async function streamChat(
       if (!raw) continue
       try {
         const evt = JSON.parse(raw)
-        if      (evt.type === 'token')      onToken(evt.content)
-        else if (evt.type === 'tool_start') onToolStart(evt.tool)
-        else if (evt.type === 'tool_end')   onToolEnd(evt.tool)
-        else if (evt.type === 'done')       onDone()
-        else if (evt.type === 'error')      onError(evt.message)
-        else if (evt.type === 'routing')    onRouting?.()
-        else if (evt.type === 'dashboard')  onDashboard?.(evt.url)
-      } catch { /* ignore malformed lines */ }
+        if      (evt.type === 'token')            onToken(evt.content)
+        else if (evt.type === 'tool_start')       onToolStart(evt.tool)
+        else if (evt.type === 'tool_end')         onToolEnd(evt.tool)
+        else if (evt.type === 'done')             onDone()
+        else if (evt.type === 'error')            onError(evt.message)
+        else if (evt.type === 'dashboard_filter') onDashboardFilter?.({
+          classes: evt.classes ?? [],
+          period:  evt.period  ?? 'all',
+          view:    evt.view    ?? 'overview',
+        })
+      } catch { /* ignore malformed SSE lines */ }
     }
   }
 }

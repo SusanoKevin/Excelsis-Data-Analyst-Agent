@@ -62,13 +62,19 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+---
+
 ## Environment Setup
 
 ```bash
 ollama pull mistral-small:22b && ollama pull nomic-embed-text
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.lock
+pip install -r requirements.lock          # use the lock file for reproducible installs
 cd web && npm install && cd ..
 ```
 
@@ -98,6 +104,16 @@ cd web && npm run dev                  # frontend only
 
 Interactive API docs: `http://localhost:8000/docs`
 
+## Tests
+
+```bash
+pytest tests/test_qa.py -v                 # unit tests only (no Ollama needed)
+pytest tests/test_qa.py -v -m integration  # integration tests (requires Ollama)
+pytest tests/test_qa.py -v --run-all       # everything
+```
+
+Unit tests (`TestZeroKnowledge`, `TestSecurityBoundary`) call tools directly — no LLM involved, fast. Integration tests (`TestModelStress`, `TestVectorStoreIntegration`) hit a live Ollama instance.
+
 ## Jupyter Notebook
 
 ```bash
@@ -107,6 +123,8 @@ jupyter notebook Excelsis.ipynb
 
 Run cells in order (1 → 10). After Cell 6 loads data, call `vec.index_store_summaries(store)` once to populate the vector DB. To change the analyst identity, edit `CURRENT_USER` in Cell 5.
 
+---
+
 ## Architecture
 
 ### Request flow
@@ -114,6 +132,12 @@ Run cells in order (1 → 10). After Cell 6 loads data, call `vec.index_store_su
 Browser → React (`web/`) → FastAPI (`api/`) → `ExcelsisAgent` (`src/agent.py`) → LangGraph ReAct loop → tools (`src/tools.py`) → `AttendanceDataStore` / `AttendanceVectorStore`
 
 The `/chat/stream` endpoint uses SSE (`StreamingResponse`); the frontend consumes `on_chat_model_stream`, `on_tool_start`, and `on_tool_end` events from LangGraph's `astream_events`.
+
+### `_OllamaWithToolParsing` — the most critical non-obvious component (`src/agent.py`)
+
+`mistral-small:22b` does not reliably emit structured tool calls. `_OllamaWithToolParsing` wraps `ChatOllama` and post-processes every response through `_fix()`, which tries 7 different formats in order: raw JSON array, `await functions.tool({})`, markdown-fenced JSON, Python `ast.parse()` call syntax, JSON on the last line, and plain-text narration (e.g. `` "I will use `query_attendance`" ``).
+
+The `_astream` override **buffers all chunks before yielding**, then calls `_fix()` on the accumulated message. Do not remove this buffering — LangGraph calls `_astream` for `astream_events`, and without it tool-call JSON in the streamed text is never converted to `tool_calls`, so `should_continue` always returns `END` and tools never execute.
 
 ### Security — two-layer enforcement (`src/security.py`)
 
@@ -144,5 +168,3 @@ FastMCP stdio server. User identity is set at process start via `MCP_USER_ID`, `
 ### Data format
 
 Drop CSV/Excel/Parquet files into `data/attendance/`. Required columns: `student_id`, `date`, `status` (`present`/`absent`/`late`/`excused`). Optional: `student_name`, `class`, `grade`. Files can also be uploaded via `POST /data/upload` (admin/teacher only).
-
-

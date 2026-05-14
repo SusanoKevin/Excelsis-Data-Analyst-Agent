@@ -1,17 +1,18 @@
 import { KeyboardEvent, useEffect, useRef, useState } from 'react'
 import MessageBubble from './MessageBubble'
-import { AtRiskStudent, AttendanceSummary } from '../types'
+import { AtRiskStudent, AttendanceSummary, DashboardFilterEvent } from '../types'
 import { buildSuggestions } from '../lib/suggestions'
 import { useChat } from '../lib/useChat'
 
 interface Props {
-  atRisk: AtRiskStudent[]
-  summary: AttendanceSummary | null
-  onClose: () => void
+  atRisk:              AtRiskStudent[]
+  summary:             AttendanceSummary | null
+  onClose:             () => void
+  onDashboardFilter?:  (f: DashboardFilterEvent) => void
 }
 
-export default function ChatPanel({ atRisk, summary, onClose }: Props) {
-  const { messages, streaming, send } = useChat()
+export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter }: Props) {
+  const { messages, streaming, send } = useChat(onDashboardFilter)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const suggestions = buildSuggestions(atRisk, summary)

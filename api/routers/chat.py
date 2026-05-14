@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from api.deps import get_agent, get_current_user
 from api.models import ChatRequest
-from src.security import AccessDeniedError, UserContext
+from src.security import UserContext
 
 router = APIRouter()
 
@@ -23,11 +23,6 @@ async def chat_stream(
         try:
             async for event in agent.astream_events(body.message, user=user):
                 yield f"data: {json.dumps(event)}\n\n"
-
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
-        except AccessDeniedError as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
             logging.getLogger(__name__).exception("Chat stream error")

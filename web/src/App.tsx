@@ -20,22 +20,18 @@ export const AuthContext = createContext<AuthCtx>({
 export const useAuth = () => useContext(AuthContext)
 
 function loadUser(): AuthUser | null {
-  const token = localStorage.getItem('token')
-  const role  = localStorage.getItem('role')
+  const token  = localStorage.getItem('token')
   const userId = localStorage.getItem('userId')
-  if (!token || !role || !userId) return null
-  const allowedClasses = JSON.parse(localStorage.getItem('allowedClasses') ?? '[]')
-  return { token, role, userId, allowedClasses }
+  if (!token || !userId) return null
+  return { token, userId }
 }
 
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(loadUser)
 
   const login = (u: AuthUser) => {
-    localStorage.setItem('token',          u.token)
-    localStorage.setItem('role',           u.role)
-    localStorage.setItem('userId',         u.userId)
-    localStorage.setItem('allowedClasses', JSON.stringify(u.allowedClasses))
+    localStorage.setItem('token',  u.token)
+    localStorage.setItem('userId', u.userId)
     setUser(u)
   }
 
@@ -49,11 +45,11 @@ export default function App() {
       <Toaster position="bottom-right" theme="dark" richColors />
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<Navigate to="/chat" replace />} />
-          <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+          <Route path="/login"     element={<Login />} />
+          <Route path="/"          element={<Navigate to="/chat" replace />} />
+          <Route path="/chat"      element={<ProtectedRoute><Chat /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/users" element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
+          <Route path="/users"     element={<ProtectedRoute><Users /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
     </AuthContext.Provider>
