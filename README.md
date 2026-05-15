@@ -10,9 +10,8 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 - **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, ad-hoc SQL) and in what order
 - **Single-model setup** — `phi4:14b` handles both data analysis/tool calling and conversational replies via a unified Ollama pipeline
 - **SQL Server backend** — connects to one or more SQL Server databases; the agent can run ad-hoc T-SQL SELECT queries alongside structured tools
-- **Role-based access control** — four roles (admin, counselor, teacher, viewer) enforced at both the tool and data level; teachers only ever see their own classes
 - **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
-- **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, at-risk student table, and admin user management
+- **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, at-risk student table, and user management
 - **REST API** — FastAPI backend with JWT auth, SSE streaming, file upload, and dashboard generation
 - **Jupyter notebook** — full interactive analysis environment that shares the same `src/` backend
 - **MCP server** — exposes attendance analysis tools to Claude Code
@@ -156,21 +155,6 @@ All models run locally via [Ollama](https://ollama.com). No API keys or internet
 ### LLM — `phi4:14b`
 
 Drives the LangGraph ReAct loop via `ChatOllama`. Handles both tool calling (data queries, at-risk identification, dashboard requests, knowledge-base lookups) and direct conversational replies in a single unified pipeline.
-
----
-
-## User Roles
-
-Access is enforced at two levels: the tool is blocked before it runs, and query results are filtered to only include rows the user is allowed to see.
-
-| Role | Own classes | At-risk list | Upload data | Audit log |
-|---|---|---|---|---|
-| `admin` | ✓ all | ✓ | ✓ | ✓ |
-| `counselor` | ✓ assigned | ✓ | — | — |
-| `teacher` | ✓ assigned | — | ✓ | — |
-| `viewer` | ✓ assigned | — | — | — |
-
-Users are managed through the **Users** page (admin only) or directly in `api/users.json`.
 
 ---
 
