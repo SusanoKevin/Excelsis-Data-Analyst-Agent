@@ -1,9 +1,9 @@
 """
-QA test suite — Excelsis 360 (mistral-small:22b backend).
+QA test suite — Excelsis 360 (phi4:14b backend).
 
 Markers:
   (none)           — pure unit tests, no Ollama needed
-  @pytest.mark.integration — requires Ollama + mistral-small:22b running locally
+  @pytest.mark.integration — requires Ollama + phi4:14b running locally
 
 Run:
   pytest tests/test_qa.py -v                        # unit tests only
@@ -116,7 +116,7 @@ class TestZeroKnowledge:
 
 @pytest.mark.integration
 class TestModelStress:
-    """TC2: Multi-part query latency and stability against live mistral-small:22b."""
+    """TC2: Multi-part query latency and stability against live phi4:14b."""
 
     LATENCY_BUDGET_S = 120
 

@@ -9,7 +9,7 @@ from sqlglot import exp
 
 _FORBIDDEN = (
     exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create,
-    exp.Alter, exp.TruncateTable,
+    exp.Alter, exp.TruncateTable, exp.Merge, exp.Command,
 )
 
 _GROUP_EXPR: dict[str, tuple[str, str]] = {
@@ -29,14 +29,18 @@ _GROUP_EXPR: dict[str, tuple[str, str]] = {
 
 def _assert_select_only(sql: str) -> None:
     try:
-        tree = sqlglot.parse_one(sql, dialect="tsql")
+        trees = [t for t in sqlglot.parse(sql, dialect="tsql") if t is not None]
     except Exception as e:
         raise ValueError(f"Could not parse SQL: {e}") from e
-    for node in tree.walk():
+    if not trees:
+        raise ValueError("Empty SQL statement.")
+    if len(trees) > 1:
+        raise PermissionError("Read-only store: only a single SELECT statement is permitted.")
+    if not isinstance(trees[0], exp.Select):
+        raise PermissionError("Read-only store: only SELECT statements are permitted.")
+    for node in trees[0].walk():
         if isinstance(node, _FORBIDDEN):
-            raise PermissionError(
-                f"Read-only store: {type(node).__name__} statements are not permitted."
-            )
+            raise PermissionError(f"Read-only store: {type(node).__name__} statements are not permitted.")
 
 
 def _build_conn_str(database: str) -> str:
@@ -72,7 +76,12 @@ class SQLAttendanceStore:
         database: str | None = None,
     ) -> pd.DataFrame:
         _assert_select_only(sql)
-        conn = pyodbc.connect(_build_conn_str(database or self._primary_db), autocommit=True)
+        target_db = database or self._primary_db
+        if target_db not in self._databases:
+            raise PermissionError(
+                f"Database '{target_db}' is not in the configured allowlist."
+            )
+        conn = pyodbc.connect(_build_conn_str(target_db), autocommit=True)
         try:
             return pd.read_sql(sql, conn, params=params or None)
         finally:

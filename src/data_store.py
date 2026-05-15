@@ -10,23 +10,6 @@ VALID_STATUSES = {"present", "absent", "late", "excused"}
 _GLOB_PATTERNS = ("*.csv", "*.xlsx", "*.xls", "*.parquet")
 
 
-def parse_attendance_query(question: str) -> dict:
-    q = question.lower()
-
-    group_by = "class"
-    if "week"      in q: group_by = "week"
-    elif "month"   in q: group_by = "month"
-    elif "day"     in q: group_by = "day_of_week"
-    elif "student" in q: group_by = "student_id"
-    elif "grade"   in q: group_by = "grade"
-
-    period = "all"
-    if "last 7" in q or "this week"  in q: period = "last_7_days"
-    elif "last 30" in q or "this month" in q: period = "last_30_days"
-
-    return {"group_by": group_by, "period": period}
-
-
 class AttendanceDataStore:
     def __init__(self, data_path: str | None = None) -> None:
         self._datasets: dict[str, dict] = {}
