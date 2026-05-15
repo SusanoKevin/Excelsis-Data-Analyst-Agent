@@ -8,7 +8,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 
 - **Natural-language chat** — ask questions about attendance in plain English; the analysis model reasons across multiple tools and streams the answer token-by-token
 - **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, ad-hoc SQL) and in what order
-- **Single-model setup** — `mistral-small:22b` handles both data analysis/tool calling and conversational replies via a unified Ollama pipeline
+- **Single-model setup** — `phi4:14b` handles both data analysis/tool calling and conversational replies via a unified Ollama pipeline
 - **SQL Server backend** — connects to one or more SQL Server databases; the agent can run ad-hoc T-SQL SELECT queries alongside structured tools
 - **Role-based access control** — four roles (admin, counselor, teacher, viewer) enforced at both the tool and data level; teachers only ever see their own classes
 - **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
@@ -23,7 +23,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 
 | Layer | Technology |
 |---|---|
-| LLM | `mistral-small:22b` via Ollama (`langchain-ollama`) |
+| LLM | `phi4:14b` via Ollama (`langchain-ollama`) |
 | Agent | LangGraph ReAct (`create_react_agent`) |
 | Database | SQL Server via `pyodbc` (ODBC Driver 18) |
 | Backend | FastAPI + Uvicorn |
@@ -55,7 +55,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 │   ├── data_store.py     # AttendanceDataStore — file-based store (CSV/Excel/Parquet, notebook use)
 │   ├── sql_store.py      # AttendanceSQLStore (SQL Server via pyodbc)
 │   ├── tools.py          # LangGraph tools (5 tools, all security-aware)
-│   ├── agent.py          # ExcelsisAgent — LangGraph ReAct agent (mistral-small:22b)
+│   ├── agent.py          # ExcelsisAgent — LangGraph ReAct agent (phi4:14b)
 │   ├── dashboard.py      # Dashboard builder (matplotlib/seaborn)
 │   └── mcp_server.py     # FastMCP server for Claude Code
 │
@@ -80,7 +80,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 Download Ollama from [ollama.com](https://ollama.com) and pull the required model:
 
 ```bash
-ollama pull mistral-small:22b
+ollama pull phi4:14b
 ```
 
 Ollama must be running on `http://localhost:11434` before starting the app.
@@ -135,7 +135,7 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `MODEL` | No | `mistral-small:22b` | Ollama model for the ReAct agent |
+| `MODEL` | No | `phi4:14b` | Ollama model for the ReAct agent |
 | `SQL_SERVER` | Yes | — | SQL Server hostname or IP |
 | `SQL_DATABASES` | Yes | — | Comma-separated list of databases to expose |
 | `SQL_PRIMARY_DB` | No | first in list | Default database for queries |
@@ -153,7 +153,7 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 
 All models run locally via [Ollama](https://ollama.com). No API keys or internet access required at inference time.
 
-### LLM — `mistral-small:22b`
+### LLM — `phi4:14b`
 
 Drives the LangGraph ReAct loop via `ChatOllama`. Handles both tool calling (data queries, at-risk identification, dashboard requests, knowledge-base lookups) and direct conversational replies in a single unified pipeline.
 

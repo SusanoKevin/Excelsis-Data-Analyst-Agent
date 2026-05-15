@@ -71,7 +71,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## Environment Setup
 
 ```bash
-ollama pull mistral-small:22b
+ollama pull phi4:14b
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.lock          # use the lock file for reproducible installs
@@ -87,7 +87,7 @@ Required `.env` variables:
 - `SQL_USERNAME` / `SQL_PASSWORD` — credentials when using `SQL_AUTH_METHOD=sql`
 
 Key optional variables:
-- `MODEL` — default `mistral-small:22b`; Ollama model used by the ReAct agent
+- `MODEL` — default `phi4:14b`; Ollama model used by the ReAct agent
 - `AT_RISK_THRESHOLD` — default `75.0`
 - `ADMIN_PASSWORD` — default `admin123`; sets the initial admin password on first run
 

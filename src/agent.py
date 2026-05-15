@@ -52,7 +52,7 @@ an error.
 
 
 _llm = ChatOllama(
-    model=os.environ.get("MODEL", "mistral-small:22b"),
+    model=os.environ.get("MODEL", "phi4:14b"),
     base_url="http://localhost:11434",
     temperature=0.1,
     num_ctx=8192,
