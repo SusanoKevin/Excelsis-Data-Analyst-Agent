@@ -40,16 +40,10 @@ def _assert_select_only(sql: str) -> None:
 
 
 def _build_conn_str(database: str) -> str:
-    server = os.environ["SQL_SERVER"]
-    driver = os.environ.get("SQL_DRIVER", "{ODBC Driver 18 for SQL Server}")
-    auth   = os.environ.get("SQL_AUTH_METHOD", "sql")
-    if auth == "windows":
-        return (
-            f"DRIVER={driver};SERVER={server};DATABASE={database};"
-            "Trusted_Connection=yes;"
-        )
-    username = os.environ.get("SQL_USERNAME", "")
-    password = os.environ.get("SQL_PASSWORD", "")
+    server   = os.environ["SQL_SERVER"]
+    driver   = os.environ.get("SQL_DRIVER", "{ODBC Driver 18 for SQL Server}")
+    username = os.environ["SQL_USERNAME"]
+    password = os.environ["SQL_PASSWORD"]
     return (
         f"DRIVER={driver};SERVER={server};DATABASE={database};"
         f"UID={username};PWD={password};TrustServerCertificate=yes;"

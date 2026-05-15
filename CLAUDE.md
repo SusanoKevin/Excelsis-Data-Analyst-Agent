@@ -71,7 +71,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## Environment Setup
 
 ```bash
-ollama pull mistral-small:22b && ollama pull nomic-embed-text
+ollama pull mistral-small:22b
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.lock          # use the lock file for reproducible installs
@@ -82,10 +82,12 @@ Ollama must be running on `http://localhost:11434` before starting the stack.
 
 Required `.env` variables:
 - `JWT_SECRET` — must be changed from the default before any production use
+- `SQL_SERVER` — SQL Server hostname or IP
+- `SQL_DATABASES` — comma-separated list of databases to expose
+- `SQL_USERNAME` / `SQL_PASSWORD` — credentials when using `SQL_AUTH_METHOD=sql`
 
 Key optional variables:
 - `MODEL` — default `mistral-small:22b`; Ollama model used by the ReAct agent
-- `EMBED_MODEL` — default `nomic-embed-text`; Ollama embedding model used by ChromaDB
 - `AT_RISK_THRESHOLD` — default `75.0`
 - `ADMIN_PASSWORD` — default `admin123`; sets the initial admin password on first run
 
@@ -112,7 +114,7 @@ pytest tests/test_qa.py -v -m integration  # integration tests (requires Ollama)
 pytest tests/test_qa.py -v --run-all       # everything
 ```
 
-Unit tests (`TestZeroKnowledge`, `TestSecurityBoundary`) call tools directly — no LLM involved, fast. Integration tests (`TestModelStress`, `TestVectorStoreIntegration`) hit a live Ollama instance.
+Unit tests (`TestZeroKnowledge`) call tools directly — no LLM involved, fast. Integration tests (`TestModelStress`) hit a live Ollama instance.
 
 ## Jupyter Notebook
 
@@ -121,7 +123,7 @@ source .venv/bin/activate
 jupyter notebook Excelsis.ipynb
 ```
 
-Run cells in order (1 → 10). After Cell 6 loads data, call `vec.index_store_summaries(store)` once to populate the vector DB. To change the analyst identity, edit `CURRENT_USER` in Cell 5.
+Run cells in order (1 → 9). To change the analyst identity, edit `CURRENT_USER` in Cell 5.
 
 ---
 
@@ -129,42 +131,22 @@ Run cells in order (1 → 10). After Cell 6 loads data, call `vec.index_store_su
 
 ### Request flow
 
-Browser → React (`web/`) → FastAPI (`api/`) → `ExcelsisAgent` (`src/agent.py`) → LangGraph ReAct loop → tools (`src/tools.py`) → `AttendanceDataStore` / `AttendanceVectorStore`
+Browser → React (`web/`) → FastAPI (`api/`) → `ExcelsisAgent` (`src/agent.py`) → LangGraph ReAct loop → tools (`src/tools.py`) → `SQLAttendanceStore` (`src/sql_store.py`)
 
 The `/chat/stream` endpoint uses SSE (`StreamingResponse`); the frontend consumes `on_chat_model_stream`, `on_tool_start`, and `on_tool_end` events from LangGraph's `astream_events`.
 
-### `_OllamaWithToolParsing` — the most critical non-obvious component (`src/agent.py`)
+### Security (`src/security.py`)
 
-`mistral-small:22b` does not reliably emit structured tool calls. `_OllamaWithToolParsing` wraps `ChatOllama` and post-processes every response through `_fix()`, which tries 7 different formats in order: raw JSON array, `await functions.tool({})`, markdown-fenced JSON, Python `ast.parse()` call syntax, JSON on the last line, and plain-text narration (e.g. `` "I will use `query_attendance`" ``).
-
-The `_astream` override **buffers all chunks before yielding**, then calls `_fix()` on the accumulated message. Do not remove this buffering — LangGraph calls `_astream` for `astream_events`, and without it tool-call JSON in the streamed text is never converted to `tool_calls`, so `should_continue` always returns `END` and tools never execute.
-
-### Security — two-layer enforcement (`src/security.py`)
-
-Every data access passes through `SecurityManager` twice:
-1. **Tool level** — `security.require(user, Permission.X)` raises `AccessDeniedError` before computation runs
-2. **Data level** — `security.filter_df(df, user)` strips rows outside `user.allowed_classes` from the returned DataFrame
-
-`UserContext` (user_id, role, allowed_classes) flows from JWT → `api/deps.py` → FastAPI Depends → `RunnableConfig["configurable"]["user_context"]` → every LangGraph tool. Tools read it via `config.get("configurable", {}).get("user_context", ADMIN_USER)`.
-
-Role → permission mapping lives in `ROLE_PERMISSIONS` in `security.py`. Teachers get `READ_OWN_CLASSES` + `GENERATE_DASHBOARD` + `INGEST_DATA`; counselors additionally get `READ_AT_RISK`; admins have all permissions.
+`UserContext` is a simple dataclass with a single field: `user_id`. There is no role enum, no permission system, and no row-level filtering in the current implementation. Authentication is purely identity-based — the JWT `sub` claim is decoded to a username and wrapped in `UserContext`.
 
 ### User management (`api/auth.py` + `api/users.json`)
 
-Users are stored as bcrypt-hashed records in `api/users.json`. On startup, `ensure_default_admin()` creates the admin account if missing. JWTs embed `sub`, `role`, and `allowed_classes`; `decode_token()` reconstructs a `UserContext` from them. Token TTL is 24 hours.
-
-### Vector store (`src/vector_store.py`)
-
-Two ChromaDB collections persisted to `data/chroma_db/`:
-- `policies` — 5 seeded best-practice documents, seeded once on first `AttendanceVectorStore()` init
-- `attendance_summaries` — per-class summaries built by `index_store_summaries(store)`; class-restricted via ChromaDB's `$in` metadata filter, so security is enforced at the DB layer for this collection
-
-Embeddings use `nomic-embed-text` via Ollama (`OllamaEmbeddings` from `langchain-community`).
+Users are stored as bcrypt-hashed records in `api/users.json`. On startup, `ensure_default_admin()` creates the admin account if missing. JWTs embed only `sub` (username) and `exp` (expiry); `decode_token()` reconstructs a `UserContext(user_id=username)` from them. Token TTL is 24 hours.
 
 ### MCP server (`src/mcp_server.py`)
 
-FastMCP stdio server. User identity is set at process start via `MCP_USER_ID`, `MCP_USER_ROLE`, `MCP_ALLOWED_CLASSES` env vars — one process per user. The server exposes 7 tools (`ask_analyst`, `attendance_summary`, `at_risk_students`, `class_statistics`, `search_policies`, `search_attendance_records`, `audit_log`) and enforces the same RBAC as the web backend.
+FastMCP stdio server. User identity is set at process start via the `MCP_USER_ID` env var — one process per user. The server exposes 4 tools: `ask_analyst`, `attendance_summary`, `at_risk_students`, `class_statistics`.
 
-### Data format
+### Data backend (`src/sql_store.py`)
 
-Drop CSV/Excel/Parquet files into `data/attendance/`. Required columns: `student_id`, `date`, `status` (`present`/`absent`/`late`/`excused`). Optional: `student_name`, `class`, `grade`. Files can also be uploaded via `POST /data/upload` (admin/teacher only).
+`SQLAttendanceStore` connects to SQL Server via `pyodbc`. Connection is configured through env vars (`SQL_SERVER`, `SQL_DATABASES`, `SQL_PRIMARY_DB`, `SQL_AUTH_METHOD`, `SQL_USERNAME`, `SQL_PASSWORD`). Primary table: `attendance` with columns `student_id`, `student_name`, `class`, `grade`, `date` (DATE), `status` (`present`/`absent`/`late`/`excused`). The agent can also query other databases listed in `SQL_DATABASES` via the `run_sql_query` tool's `database` parameter.

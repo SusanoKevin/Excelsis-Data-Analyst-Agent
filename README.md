@@ -1,15 +1,15 @@
 # Excelsis 360 — Attendance Analyst Agent
 
-AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama local LLMs), ChromaDB vector search, and a FastAPI + React full-stack web interface.
+AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama local LLMs), SQL Server data backend, and a FastAPI + React full-stack web interface.
 
 ---
 
 ## Features
 
 - **Natural-language chat** — ask questions about attendance in plain English; the analysis model reasons across multiple tools and streams the answer token-by-token
-- **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, vector knowledge base) and in what order
+- **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, ad-hoc SQL) and in what order
 - **Single-model setup** — `mistral-small:22b` handles both data analysis/tool calling and conversational replies via a unified Ollama pipeline
-- **ChromaDB vector search** — semantic search over intervention policy documents and indexed class summaries using Ollama embeddings (`nomic-embed-text`)
+- **SQL Server backend** — connects to one or more SQL Server databases; the agent can run ad-hoc T-SQL SELECT queries alongside structured tools
 - **Role-based access control** — four roles (admin, counselor, teacher, viewer) enforced at both the tool and data level; teachers only ever see their own classes
 - **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
 - **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, at-risk student table, and admin user management
@@ -25,7 +25,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 |---|---|
 | LLM | `mistral-small:22b` via Ollama (`langchain-ollama`) |
 | Agent | LangGraph ReAct (`create_react_agent`) |
-| Vector DB | ChromaDB + Ollama embeddings (`nomic-embed-text`) |
+| Database | SQL Server via `pyodbc` (ODBC Driver 18) |
 | Backend | FastAPI + Uvicorn |
 | Auth | JWT (python-jose) + bcrypt |
 | Frontend | React 18 + Vite + Tailwind CSS |
@@ -50,9 +50,10 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 │       └── dashboard.py  # Dashboard generation
 │
 ├── src/                  # Shared Python backend (used by API + notebook)
-│   ├── security.py       # RBAC: Role, Permission, UserContext, SecurityManager
-│   ├── data_store.py     # AttendanceDataStore (ingest, stats, at-risk)
-│   ├── vector_store.py   # AttendanceVectorStore (ChromaDB + Ollama embeddings)
+│   ├── security.py       # UserContext dataclass (user_id)
+│   ├── sql_store.py      # SQLAttendanceStore — primary data backend (SQL Server via pyodbc)
+│   ├── data_store.py     # AttendanceDataStore — file-based store (CSV/Excel/Parquet, notebook use)
+│   ├── sql_store.py      # AttendanceSQLStore (SQL Server via pyodbc)
 │   ├── tools.py          # LangGraph tools (5 tools, all security-aware)
 │   ├── agent.py          # ExcelsisAgent — LangGraph ReAct agent (mistral-small:22b)
 │   ├── dashboard.py      # Dashboard builder (matplotlib/seaborn)
@@ -76,11 +77,10 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 
 ### 1. Install and start Ollama
 
-Download Ollama from [ollama.com](https://ollama.com) and pull the required models:
+Download Ollama from [ollama.com](https://ollama.com) and pull the required model:
 
 ```bash
 ollama pull mistral-small:22b
-ollama pull nomic-embed-text
 ```
 
 Ollama must be running on `http://localhost:11434` before starting the app.
@@ -136,9 +136,13 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `MODEL` | No | `mistral-small:22b` | Ollama model for the ReAct agent |
-| `EMBED_MODEL` | No | `nomic-embed-text` | Ollama embedding model |
-| `CHROMA_PATH` | No | `./data/chroma_db` | ChromaDB persistence directory |
-| `ATTENDANCE_DATA_PATH` | No | `./data/attendance` | Directory of attendance files to load on startup |
+| `SQL_SERVER` | Yes | — | SQL Server hostname or IP |
+| `SQL_DATABASES` | Yes | — | Comma-separated list of databases to expose |
+| `SQL_PRIMARY_DB` | No | first in list | Default database for queries |
+| `SQL_DRIVER` | No | `{ODBC Driver 18 for SQL Server}` | ODBC driver string |
+| `SQL_AUTH_METHOD` | No | `sql` | `sql`, `windows`, or `azure_ad` |
+| `SQL_USERNAME` | If `sql` auth | — | SQL Server login username |
+| `SQL_PASSWORD` | If `sql` auth | — | SQL Server login password |
 | `AT_RISK_THRESHOLD` | No | `75.0` | Default attendance % threshold for at-risk flagging |
 | `JWT_SECRET` | Yes (prod) | `change-me-in-production` | Secret key for JWT signing |
 | `ADMIN_PASSWORD` | No | `admin123` | Password for the default admin account |
@@ -152,10 +156,6 @@ All models run locally via [Ollama](https://ollama.com). No API keys or internet
 ### LLM — `mistral-small:22b`
 
 Drives the LangGraph ReAct loop via `ChatOllama`. Handles both tool calling (data queries, at-risk identification, dashboard requests, knowledge-base lookups) and direct conversational replies in a single unified pipeline.
-
-### Embeddings — `nomic-embed-text`
-
-Served by Ollama. Used by ChromaDB for semantic search over intervention policy documents and indexed class summaries.
 
 ---
 
@@ -184,7 +184,7 @@ Users are managed through the **Users** page (admin only) or directly in `api/us
 | Users | `/users` | Admin only |
 
 ### Chat
-Type any question in natural language. The analysis model streams its response token-by-token, with tool-use indicators showing which data sources it consulted (e.g. *Attendance data*, *Knowledge base*).
+Type any question in natural language. The analysis model streams its response token-by-token, with tool-use indicators showing which data sources it consulted (e.g. *Attendance data*, *SQL query*).
 
 Example questions:
 - *Which classes have the lowest attendance this month?*
@@ -209,8 +209,7 @@ The FastAPI backend is available at `http://localhost:8000`. Interactive docs at
 | GET | `/data/summary` | Any | Attendance overview |
 | GET | `/data/at-risk` | Counselor+ | At-risk student list |
 | GET | `/data/stats` | Any | Stats by group/period |
-| POST | `/data/upload` | Admin/Teacher | Upload CSV/Excel/Parquet |
-| POST | `/dashboard/generate` | Any | Generate dashboard PNG |
+| GET | `/data/sparklines` | Any | Sparkline trend data |
 | GET | `/health` | None | Liveness check |
 
 ---
@@ -224,24 +223,20 @@ source .venv/bin/activate
 jupyter notebook Excelsis.ipynb
 ```
 
-Run cells in order (1 → 9). The notebook uses the same `src/` modules as the web backend. Cell 2 verifies that Ollama is reachable before continuing. After loading data in Cell 6, call `vec.index_store_summaries(store)` to make class summaries searchable via the vector DB.
+Run cells in order (1 → 9). The notebook uses the same `src/` modules as the web backend. Cell 2 verifies that Ollama is reachable before continuing.
 
 To change who the analyst is (and what data they can access), edit `CURRENT_USER` in Cell 5:
 
 ```python
-CURRENT_USER = UserContext("ms_johnson", Role.TEACHER, allowed_classes=["10A", "10B"])
+CURRENT_USER = UserContext(user_id="ms_johnson")
 ```
 
 ---
 
-## Loading Attendance Data
+## Attendance Data
 
-Place CSV, Excel (`.xlsx`), or Parquet files in `data/attendance/`. The server loads them automatically on startup.
+Attendance data is read directly from SQL Server. Configure the connection in `.env` (see [Environment Variables](#environment-variables)).
 
-Required columns: `student_id`, `date`, `status` (`present` / `absent` / `late` / `excused`).
-
-Optional columns: `student_name`, `class`, `grade`.
-
-Files can also be uploaded via the Dashboard page or the `POST /data/upload` endpoint.
+The agent can query any database listed in `SQL_DATABASES`. Expected schema: a table with at minimum `student_id`, `date`, and `status` columns (`present` / `absent` / `late` / `excused`). The agent will adapt its T-SQL to whatever schema it finds via `run_sql_query`.
 
 ---
