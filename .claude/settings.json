@@ -3,18 +3,15 @@
     "excelsis": {
       "command": "python",
       "args": ["-m", "src.mcp_server"],
-      "cwd": "/home/susanokevin/Excelsis_Attendance-Agent",
+      "cwd": ".",
       "env": {
-        "NVIDIA_API_KEY":         "${NVIDIA_API_KEY}",
-        "TAVILY_API_KEY":         "${TAVILY_API_KEY}",
-        "LLM_MODEL":              "meta/llama-3.1-8b-instruct",
-        "NVIDIA_BASE_URL":        "https://integrate.api.nvidia.com/v1",
-        "EMBED_MODEL":            "nvidia/nv-embedqa-e5-v5",
-        "CHROMA_PATH":            "./data/chroma_db",
-        "ATTENDANCE_DATA_PATH":   "./data/attendance",
-        "MCP_USER_ID":            "claude_code",
-        "MCP_USER_ROLE":          "admin",
-        "MCP_ALLOWED_CLASSES":    ""
+        "MODEL":          "${MODEL}",
+        "SQL_SERVER":     "${SQL_SERVER}",
+        "SQL_DATABASES":  "${SQL_DATABASES}",
+        "SQL_PRIMARY_DB": "${SQL_PRIMARY_DB}",
+        "SQL_USERNAME":   "${SQL_USERNAME}",
+        "SQL_PASSWORD":   "${SQL_PASSWORD}",
+        "MCP_USER_ID":    "claude_code"
       }
     }
   }
