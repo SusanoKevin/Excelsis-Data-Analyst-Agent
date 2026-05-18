@@ -16,3 +16,4 @@ data/chroma_db/
 web/node_modules/
 web/dist/
 .DS_Store
+github personal access token
