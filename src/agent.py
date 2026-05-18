@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import queue
+import threading
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
@@ -25,6 +28,8 @@ Tool usage:
 - update_dashboard_view  — update the live dashboard to show a specific view or filter
 - get_summary            — quick data overview (total records, date range, overall rate)
 - run_sql_query          — ad-hoc T-SQL SELECT against any configured database
+- compare_periods        — compare attendance rates between two time periods (e.g. last_7_days vs last_30_days)
+- compare_classes        — compare attendance statistics for two classes side by side
 
 Dashboard rules (update_dashboard_view):
 - Call this when the user asks to see a chart, visual, or dashboard view
@@ -50,6 +55,7 @@ CRITICAL: Call tools immediately — NEVER output text like "I will use X tool" 
 an error.
 """
 
+_TIMEOUT = 90
 
 _llm = ChatOllama(
     model=os.environ.get("MODEL", "phi4:14b"),
@@ -89,9 +95,28 @@ class ExcelsisAgent:
         user     = user or ADMIN_USER
         config   = self._build_config(user)
         messages = list(self._history[-self._max_history:]) + [HumanMessage(content=query)]
-        result   = self._graph.invoke({"messages": messages}, config=config)
-        final    = result["messages"][-1]
-        answer   = final.content if isinstance(final, AIMessage) else str(final)
+
+        result_q: queue.Queue = queue.Queue()
+
+        def _run() -> None:
+            try:
+                result_q.put(("ok", self._graph.invoke({"messages": messages}, config=config)))
+            except Exception as e:
+                result_q.put(("err", e))
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(timeout=_TIMEOUT)
+
+        if t.is_alive():
+            return "Sorry, the request timed out. The model may be busy — please try again."
+
+        status, value = result_q.get()
+        if status == "err":
+            raise value
+
+        final  = value["messages"][-1]
+        answer = final.content if isinstance(final, AIMessage) else str(final)
         self._append_history(query, answer)
         return answer
 
@@ -104,44 +129,51 @@ class ExcelsisAgent:
           {"type": "tool_start","tool":    "..."}
           {"type": "tool_end",  "tool":    "..."}
           {"type": "dashboard_filter", "classes": [...], "period": "...", "view": "..."}
+          {"type": "error",     "message": "..."}
         """
         user     = user or ADMIN_USER
         config   = self._build_config(user)
         messages = list(self._history[-self._max_history:]) + [HumanMessage(content=message)]
         full     = ""
 
-        async for event in self._graph.astream_events(
-            {"messages": messages},
-            config=config,
-            version="v2",
-        ):
-            kind = event.get("event", "")
+        try:
+            async with asyncio.timeout(_TIMEOUT):
+                async for event in self._graph.astream_events(
+                    {"messages": messages},
+                    config=config,
+                    version="v2",
+                ):
+                    kind = event.get("event", "")
 
-            if kind == "on_chat_model_stream":
-                chunk = event.get("data", {}).get("chunk")
-                if chunk and hasattr(chunk, "content") and chunk.content:
-                    full += chunk.content
-                    yield {"type": "token", "content": chunk.content}
+                    if kind == "on_chat_model_stream":
+                        chunk = event.get("data", {}).get("chunk")
+                        if chunk and hasattr(chunk, "content") and chunk.content:
+                            full += chunk.content
+                            yield {"type": "token", "content": chunk.content}
 
-            elif kind == "on_tool_start":
-                yield {"type": "tool_start", "tool": event.get("name", "")}
+                    elif kind == "on_tool_start":
+                        yield {"type": "tool_start", "tool": event.get("name", "")}
 
-            elif kind == "on_tool_end":
-                name = event.get("name", "")
-                yield {"type": "tool_end", "tool": name}
-                if name == "update_dashboard_view":
-                    raw = event.get("data", {}).get("output", "")
-                    output = raw.content if hasattr(raw, "content") else str(raw)
-                    try:
-                        payload = json.loads(output)
-                        yield {
-                            "type":    "dashboard_filter",
-                            "classes": payload.get("classes", []),
-                            "period":  payload.get("period", "all"),
-                            "view":    payload.get("view", "overview"),
-                        }
-                    except (json.JSONDecodeError, AttributeError):
-                        pass
+                    elif kind == "on_tool_end":
+                        name = event.get("name", "")
+                        yield {"type": "tool_end", "tool": name}
+                        if name == "update_dashboard_view":
+                            raw = event.get("data", {}).get("output", "")
+                            output = raw.content if hasattr(raw, "content") else str(raw)
+                            try:
+                                payload = json.loads(output)
+                                yield {
+                                    "type":    "dashboard_filter",
+                                    "classes": payload.get("classes", []),
+                                    "period":  payload.get("period", "all"),
+                                    "view":    payload.get("view", "overview"),
+                                }
+                            except (json.JSONDecodeError, AttributeError):
+                                pass
+
+        except asyncio.TimeoutError:
+            yield {"type": "error", "message": "Request timed out. The model may be busy — please try again."}
+            return
 
         self._append_history(message, full)
 

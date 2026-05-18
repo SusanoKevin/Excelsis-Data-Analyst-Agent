@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from api.deps import get_agent, get_current_user
+from api.limiter import limiter
 from api.models import ChatRequest
 from src.security import UserContext
 
@@ -12,6 +13,7 @@ router = APIRouter()
 
 
 @router.post("/stream")
+@limiter.limit("10/minute")
 async def chat_stream(
     body: ChatRequest,
     request: Request,

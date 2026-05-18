@@ -1,10 +1,31 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { streamChat } from '../api/client'
 import { DashboardFilterEvent, Message } from '../types'
 
+const STORAGE_KEY = 'excelsis_chat'
+
+function loadHistory(): Message[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
 export function useChat(onDashboardFilter?: (f: DashboardFilterEvent) => void) {
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<Message[]>(loadHistory)
   const [streaming, setStreaming] = useState(false)
+
+  useEffect(() => {
+    try {
+      // Strip isStreaming flag before persisting
+      const toSave = messages.map((m) => ({ ...m, isStreaming: false }))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
+    } catch {
+      // localStorage full — ignore
+    }
+  }, [messages])
 
   const updateLast = (patch: Partial<Message>) =>
     setMessages((prev) => {
@@ -41,5 +62,10 @@ export function useChat(onDashboardFilter?: (f: DashboardFilterEvent) => void) {
     )
   }
 
-  return { messages, streaming, send }
+  const clearHistory = () => {
+    setMessages([])
+    localStorage.removeItem(STORAGE_KEY)
+  }
+
+  return { messages, streaming, send, clearHistory }
 }

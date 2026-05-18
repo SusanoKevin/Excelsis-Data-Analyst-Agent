@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter }: Props) {
-  const { messages, streaming, send } = useChat(onDashboardFilter)
+  const { messages, streaming, send, clearHistory } = useChat(onDashboardFilter)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const suggestions = buildSuggestions(atRisk, summary)
@@ -40,13 +40,23 @@ export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter 
           <p className="text-sm font-semibold text-carbon">Ask Excelsis</p>
           <p className="text-xs text-pewter mt-0.5">AI attendance analyst</p>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close chat panel"
-          className="text-pewter hover:text-carbon transition-colors w-7 h-7 flex items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
-        >
-          ✕
-        </button>
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={clearHistory}
+              className="text-xs text-pewter hover:text-carbon transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue rounded"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            aria-label="Close chat panel"
+            className="text-pewter hover:text-carbon transition-colors w-7 h-7 flex items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div

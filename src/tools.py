@@ -147,10 +147,65 @@ def run_sql_query(
     return _df_to_text(df, max_rows=200)
 
 
+@tool
+def compare_periods(
+    period_a: str = "last_7_days",
+    period_b: str = "last_30_days",
+    config: RunnableConfig = None,
+) -> str:
+    """
+    Compare attendance rates between two time periods across all classes.
+    Returns a side-by-side table with a delta column.
+    period_a, period_b: 'all' | 'last_7_days' | 'last_30_days'
+    Example: compare_periods(period_a='last_7_days', period_b='last_30_days')
+    """
+    store = _store(config)
+    if store is None:
+        return "No data store connected."
+
+    df_a = store.compute_stats("class", period_a)
+    df_b = store.compute_stats("class", period_b)
+
+    if df_a.empty and df_b.empty:
+        return "No data available for either period."
+
+    df_a = df_a[["class", "attendance_rate"]].rename(columns={"attendance_rate": f"rate_{period_a}"})
+    df_b = df_b[["class", "attendance_rate"]].rename(columns={"attendance_rate": f"rate_{period_b}"})
+
+    merged = df_a.merge(df_b, on="class", how="outer").fillna(0)
+    delta = (merged[f"rate_{period_b}"] - merged[f"rate_{period_a}"]).round(1)
+    merged["delta"] = delta.apply(lambda d: f"+{d}" if d > 0 else str(d))
+
+    return _df_to_text(merged)
+
+
+@tool
+def compare_classes(
+    class_a: str,
+    class_b: str,
+    config: RunnableConfig = None,
+) -> str:
+    """
+    Compare attendance statistics for two specific classes side by side.
+    Returns total, present, absent, late, and attendance rate for each class.
+    Example: compare_classes(class_a='10A', class_b='10B')
+    """
+    store = _store(config)
+    if store is None:
+        return "No data store connected."
+
+    df = store.compute_stats("class", "all", classes=[class_a, class_b])
+    if df.empty:
+        return f"No data found for classes '{class_a}' or '{class_b}'."
+    return _df_to_text(df)
+
+
 ALL_TOOLS = [
     query_attendance,
     get_at_risk_students,
     get_summary,
     update_dashboard_view,
     run_sql_query,
+    compare_periods,
+    compare_classes,
 ]

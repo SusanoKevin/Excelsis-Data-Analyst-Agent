@@ -9,6 +9,7 @@ import AttendanceByClassChart from '../components/charts/AttendanceByClassChart'
 import WeeklyTrendChart from '../components/charts/WeeklyTrendChart'
 import StatusDonutChart from '../components/charts/StatusDonutChart'
 import WeekdayBarChart from '../components/charts/WeekdayBarChart'
+import TrendComparisonChart from '../components/charts/TrendComparisonChart'
 import { useDashboardData } from '../hooks/useDashboardData'
 import { DashboardFilter, DashboardFilterEvent, DashboardPeriod, DrillLevel } from '../types'
 
@@ -31,7 +32,7 @@ function KpiCard({ label, value, sub, featured }: {
 export default function Dashboard() {
   const [searchParams] = useSearchParams()
 
-  const [filter, setFilter]           = useState<DashboardFilter>({ classes: [], period: 'all', grade: '' })
+  const [filter, setFilter]           = useState<DashboardFilter>({ classes: [], period: 'all' })
   const [activeClass, setActiveClass]  = useState<string | null>(null)
   const [drillLevel, setDrillLevel]   = useState<DrillLevel>('overview')
   const [drillClass, setDrillClass]   = useState<string | null>(null)
@@ -45,7 +46,7 @@ export default function Dashboard() {
     const view = searchParams.get('view')   as DrillLevel | null
     if (cls || per || view) {
       const classes = cls?.split(',').filter(Boolean) ?? []
-      setFilter({ classes, period: per ?? 'all', grade: '' })
+      setFilter({ classes, period: per ?? 'all' })
       if (view === 'class' && classes.length > 0) {
         setDrillLevel('class')
         setDrillClass(classes[0])
@@ -54,7 +55,7 @@ export default function Dashboard() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { summary, classStats, weeklyStats, dowStats, statusCounts, atRisk, sparklines, loading } =
+  const { summary, classStats, weeklyStats, dowStats, statusCounts, atRisk, sparklines, trends, loading } =
     useDashboardData(filter)
 
   const availableClasses = summary?.classes ?? []
@@ -90,7 +91,7 @@ export default function Dashboard() {
   }
 
   function handleAgentFilter(f: DashboardFilterEvent) {
-    setFilter({ classes: f.classes, period: f.period, grade: '' })
+    setFilter({ classes: f.classes, period: f.period })
     setActiveClass(f.classes[0] ?? null)
     if (f.view === 'class' && f.classes.length > 0) {
       setDrillLevel('class')
@@ -172,36 +173,43 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Overview: 2×2 chart grid */}
+        {/* Overview: 2×2 chart grid + trends */}
         {drillLevel === 'overview' && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
-            <div className="bg-fog border border-arctic-mist rounded-[10px] p-5">
-              <p className="text-xs text-pewter uppercase tracking-widest mb-4">Attendance by class</p>
-              <AttendanceByClassChart
-                data={classStats}
-                activeClass={activeClass}
-                onClassClick={handleClassClick}
-                onClassDrill={handleClassDrill}
-                loading={loading}
-              />
-              <p className="text-xs text-pewter mt-2">Single-click to filter · Double-click to drill down</p>
+          <>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+              <div className="bg-fog border border-arctic-mist rounded-[10px] p-5">
+                <p className="text-xs text-pewter uppercase tracking-widest mb-4">Attendance by class</p>
+                <AttendanceByClassChart
+                  data={classStats}
+                  activeClass={activeClass}
+                  onClassClick={handleClassClick}
+                  onClassDrill={handleClassDrill}
+                  loading={loading}
+                />
+                <p className="text-xs text-pewter mt-2">Single-click to filter · Double-click to drill down</p>
+              </div>
+
+              <div className="bg-fog border border-arctic-mist rounded-[10px] p-5">
+                <p className="text-xs text-pewter uppercase tracking-widest mb-4">Weekly trend</p>
+                <WeeklyTrendChart data={weeklyStats} loading={loading} />
+              </div>
+
+              <div className="bg-fog border border-arctic-mist rounded-[10px] p-5">
+                <p className="text-xs text-pewter uppercase tracking-widest mb-4">Status breakdown</p>
+                <StatusDonutChart data={statusCounts} loading={loading} />
+              </div>
+
+              <div className="bg-fog border border-arctic-mist rounded-[10px] p-5">
+                <p className="text-xs text-pewter uppercase tracking-widest mb-4">Attendance by day of week</p>
+                <WeekdayBarChart data={dowStats} loading={loading} />
+              </div>
             </div>
 
-            <div className="bg-fog border border-arctic-mist rounded-[10px] p-5">
-              <p className="text-xs text-pewter uppercase tracking-widest mb-4">Weekly trend</p>
-              <WeeklyTrendChart data={weeklyStats} loading={loading} />
+            <div className="bg-fog border border-arctic-mist rounded-[10px] p-5 mb-8">
+              <p className="text-xs text-pewter uppercase tracking-widest mb-4">30-day vs prior period</p>
+              <TrendComparisonChart current={trends.current} previous={trends.previous} loading={loading} />
             </div>
-
-            <div className="bg-fog border border-arctic-mist rounded-[10px] p-5">
-              <p className="text-xs text-pewter uppercase tracking-widest mb-4">Status breakdown</p>
-              <StatusDonutChart data={statusCounts} loading={loading} />
-            </div>
-
-            <div className="bg-fog border border-arctic-mist rounded-[10px] p-5">
-              <p className="text-xs text-pewter uppercase tracking-widest mb-4">Attendance by day of week</p>
-              <WeekdayBarChart data={dowStats} loading={loading} />
-            </div>
-          </div>
+          </>
         )}
 
         {/* Drill-down panel */}

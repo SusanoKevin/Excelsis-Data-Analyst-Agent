@@ -7,7 +7,7 @@ import { buildSuggestions } from '../lib/suggestions'
 import { useChat } from '../lib/useChat'
 
 export default function Chat() {
-  const { messages, streaming, send } = useChat()
+  const { messages, streaming, send, clearHistory } = useChat()
   const [input, setInput]     = useState('')
   const [atRisk, setAtRisk]   = useState<AtRiskStudent[]>([])
   const [summary, setSummary] = useState<AttendanceSummary | null>(null)
@@ -38,11 +38,21 @@ export default function Chat() {
       <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="border-b border-arctic-mist px-6 py-4">
-          <h2 className="text-sm font-semibold text-carbon">Attendance Chat</h2>
-          <p className="text-xs text-pewter mt-0.5">
-            Ask anything about attendance data in natural language
-          </p>
+        <div className="border-b border-arctic-mist px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-carbon">Attendance Chat</h2>
+            <p className="text-xs text-pewter mt-0.5">
+              Ask anything about attendance data in natural language
+            </p>
+          </div>
+          {messages.length > 0 && (
+            <button
+              onClick={clearHistory}
+              className="text-xs text-pewter hover:text-carbon transition-colors underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue rounded"
+            >
+              Clear history
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-8" aria-live="polite" aria-label="Conversation">

@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import WeeklyTrendChart from './charts/WeeklyTrendChart'
 import { AtRiskStudent, DrillLevel, WeeklyStat } from '../types'
 
 const DANGER_HEX  = '#e74c3c'
 const WARNING_HEX = '#f5a623'
+
+type SortCol = 'present' | 'absent' | 'attendance_rate'
+type SortDir = 'asc' | 'desc'
 
 function rateColor(rate: number) {
   if (rate < 70) return 'text-danger'
@@ -45,6 +49,24 @@ function Sparkline({ points, rate }: { points: (number | null)[], rate: number }
   )
 }
 
+function SortTh({ col, label, active, dir, onSort }: {
+  col:    SortCol
+  label:  string
+  active: boolean
+  dir:    SortDir
+  onSort: (col: SortCol) => void
+}) {
+  return (
+    <th
+      className="px-5 py-3 text-right text-xs text-pewter uppercase tracking-widest cursor-pointer select-none hover:text-carbon transition-colors"
+      onClick={() => onSort(col)}
+    >
+      {label}
+      <span className="ml-1 opacity-50">{active ? (dir === 'asc' ? '↑' : '↓') : '↕'}</span>
+    </th>
+  )
+}
+
 interface Props {
   drillLevel:   DrillLevel
   drillClass:   string | null
@@ -58,12 +80,25 @@ interface Props {
 export default function DrilldownPanel({
   drillLevel, drillClass, drillStudent, atRisk, sparklines, loading, onInspect,
 }: Props) {
+  const [sortCol, setSortCol] = useState<SortCol>('attendance_rate')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  const toggleSort = (col: SortCol) => {
+    if (col === sortCol) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
   if (drillLevel === 'overview') return null
 
   if (drillLevel === 'class') {
     const students = drillClass
       ? atRisk.filter((s) => s.cls === drillClass)
       : atRisk
+
+    const sorted = [...students].sort((a, b) => {
+      const mult = sortDir === 'asc' ? 1 : -1
+      return (a[sortCol] - b[sortCol]) * mult
+    })
 
     return (
       <div className="bg-fog border border-arctic-mist rounded-[10px] overflow-hidden mb-8">
@@ -74,7 +109,7 @@ export default function DrilldownPanel({
           <p className="text-xs text-pewter mt-0.5">Below 75% attendance threshold</p>
         </div>
 
-        {students.length === 0 ? (
+        {sorted.length === 0 ? (
           <p className="text-xs text-pewter px-5 py-4">No at-risk students in this class.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -83,15 +118,15 @@ export default function DrilldownPanel({
               <thead>
                 <tr className="border-b border-arctic-mist">
                   <th className="px-5 py-3 text-left text-xs text-pewter uppercase tracking-widest">Student</th>
-                  <th className="px-5 py-3 text-right text-xs text-pewter uppercase tracking-widest">Present</th>
-                  <th className="px-5 py-3 text-right text-xs text-pewter uppercase tracking-widest">Absent</th>
-                  <th className="px-5 py-3 text-right text-xs text-pewter uppercase tracking-widest">Rate</th>
+                  <SortTh col="present"         label="Present" active={sortCol === 'present'}         dir={sortDir} onSort={toggleSort} />
+                  <SortTh col="absent"          label="Absent"  active={sortCol === 'absent'}          dir={sortDir} onSort={toggleSort} />
+                  <SortTh col="attendance_rate" label="Rate"    active={sortCol === 'attendance_rate'} dir={sortDir} onSort={toggleSort} />
                   <th className="px-5 py-3 text-left text-xs text-pewter uppercase tracking-widest">6-week trend</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
               <tbody>
-                {students.map((s) => {
+                {sorted.map((s) => {
                   const spark = sparklines[String(s.student_id)]
                   return (
                     <tr key={s.student_id} className={rowStyle(s.attendance_rate)}>

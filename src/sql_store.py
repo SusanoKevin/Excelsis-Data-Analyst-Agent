@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 import pandas as pd
 import pyodbc
@@ -54,6 +55,30 @@ def _build_conn_str(database: str) -> str:
     )
 
 
+class _TTLCache:
+    def __init__(self, ttl: int = 300) -> None:
+        self._store: dict = {}
+        self._ttl = ttl
+
+    def get(self, key: str):
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        value, expires = entry
+        if time.monotonic() > expires:
+            self._store.pop(key, None)
+            return None
+        return value
+
+    def set(self, key: str, value) -> None:
+        self._store[key] = (value, time.monotonic() + self._ttl)
+
+
+def _ph(n: int) -> str:
+    """Return n comma-separated '?' placeholders."""
+    return ",".join(["?"] * n)
+
+
 class SQLAttendanceStore:
     """
     Read-only SQL Server backend.
@@ -68,19 +93,13 @@ class SQLAttendanceStore:
             for d in os.environ.get("SQL_DATABASES", self._primary_db).split(",")
             if d.strip()
         ]
+        self._cache = _TTLCache(ttl=300)
 
-    def _query(
-        self,
-        sql: str,
-        params: tuple = (),
-        database: str | None = None,
-    ) -> pd.DataFrame:
+    def _query(self, sql: str, params: tuple = (), database: str | None = None) -> pd.DataFrame:
         _assert_select_only(sql)
         target_db = database or self._primary_db
         if target_db not in self._databases:
-            raise PermissionError(
-                f"Database '{target_db}' is not in the configured allowlist."
-            )
+            raise PermissionError(f"Database '{target_db}' is not in the configured allowlist.")
         conn = pyodbc.connect(_build_conn_str(target_db), autocommit=True)
         try:
             return pd.read_sql(sql, conn, params=params or None)
@@ -118,26 +137,49 @@ class SQLAttendanceStore:
 
     def compute_stats(
         self,
-        group_by: str = "class",
-        period:   str = "all",
-        classes:  list[str] | None = None,
+        group_by:  str = "class",
+        period:    str = "all",
+        classes:   list[str] | None = None,
+        date_from: str | None = None,
+        date_to:   str | None = None,
     ) -> pd.DataFrame:
-        col_expr, col_alias = _GROUP_EXPR.get(group_by, _GROUP_EXPR["class"])
+        cache_key = f"stats:{group_by}:{period}:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
-        period_clause = ""
-        if period == "last_7_days":
+        col_expr, col_alias = _GROUP_EXPR.get(group_by, _GROUP_EXPR["class"])
+        params: list = []
+
+        # Explicit date bounds take precedence over period shorthand.
+        # Using parameterized queries to prevent SQL injection.
+        if date_from or date_to:
+            period_parts = []
+            if date_from:
+                period_parts.append("AND date >= ?")
+                params.append(date_from)
+            if date_to:
+                period_parts.append("AND date <= ?")
+                params.append(date_to)
+            period_clause = " ".join(period_parts)
+        elif period == "last_7_days":
             period_clause = "AND date >= (SELECT DATEADD(dd,-7,MAX(date)) FROM attendance)"
         elif period == "last_30_days":
             period_clause = "AND date >= (SELECT DATEADD(dd,-30,MAX(date)) FROM attendance)"
+        elif period == "prior_30_days":
+            period_clause = (
+                "AND date >= (SELECT DATEADD(dd,-60,MAX(date)) FROM attendance) "
+                "AND date <  (SELECT DATEADD(dd,-30,MAX(date)) FROM attendance)"
+            )
+        else:
+            period_clause = ""
 
         class_clause = ""
-        params: tuple = ()
         if classes:
-            placeholders = ",".join("?" * len(classes))
-            class_clause = f"AND class IN ({placeholders})"
-            params = tuple(classes)
+            class_clause = f"AND class IN ({_ph(len(classes))})"
+            params.extend(classes)
 
-        return self._query(f"""
+        result = self._query(f"""
         SELECT
             {col_expr}  AS [{col_alias}],
             COUNT(*)                                                     AS total,
@@ -151,22 +193,40 @@ class SQLAttendanceStore:
         {period_clause}
         {class_clause}
         GROUP BY {col_expr}
-        """, params=params)
+        """, params=tuple(params))
+        self._cache.set(cache_key, result)
+        return result
 
     def get_at_risk(
         self,
         threshold: float = 75.0,
         classes:   list[str] | None = None,
+        date_from: str | None = None,
+        date_to:   str | None = None,
     ) -> pd.DataFrame:
+        cache_key = f"at_risk:{threshold}:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         params: list = []
         class_clause = ""
         if classes:
-            placeholders = ",".join("?" * len(classes))
-            class_clause = f"AND class IN ({placeholders})"
+            class_clause = f"AND class IN ({_ph(len(classes))})"
             params.extend(classes)
+
+        # Parameterized date bounds prevent SQL injection on user-supplied dates.
+        date_clause = ""
+        if date_from:
+            date_clause += "AND date >= ? "
+            params.append(date_from)
+        if date_to:
+            date_clause += "AND date <= ? "
+            params.append(date_to)
+
         params.append(threshold)
 
-        return self._query(f"""
+        result = self._query(f"""
         SELECT
             student_id,
             MAX(student_name)                                              AS name,
@@ -180,16 +240,18 @@ class SQLAttendanceStore:
         FROM attendance
         WHERE status IN ('present','absent','late','excused')
         {class_clause}
+        {date_clause}
         GROUP BY student_id
         HAVING ROUND(100.0*SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)
             /NULLIF(COUNT(*),0),1) < ?
         ORDER BY attendance_rate ASC
         """, params=tuple(params))
+        self._cache.set(cache_key, result)
+        return result
 
     def student_weekly_rates(self, student_ids: list, weeks: int = 6) -> dict:
         if not student_ids:
             return {}
-        placeholders = ",".join("?" * len(student_ids))
         df = self._query(f"""
         SELECT
             student_id,
@@ -200,7 +262,7 @@ class SQLAttendanceStore:
             SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) AS present
         FROM attendance
         WHERE status IN ('present','absent','late','excused')
-          AND student_id IN ({placeholders})
+          AND student_id IN ({_ph(len(student_ids))})
         GROUP BY
             student_id,
             CONVERT(NVARCHAR(10),DATEADD(dd,1-DATEPART(dw,date),date),23)

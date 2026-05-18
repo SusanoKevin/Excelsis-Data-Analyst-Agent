@@ -11,6 +11,7 @@ const PERIODS: { value: DashboardPeriod; label: string }[] = [
   { value: 'all',          label: 'All time' },
   { value: 'last_30_days', label: 'Last 30 days' },
   { value: 'last_7_days',  label: 'Last 7 days' },
+  { value: 'custom',       label: 'Custom range' },
 ]
 
 export default function FilterBar({ filter, classes, onChange }: Props) {
@@ -33,7 +34,7 @@ export default function FilterBar({ filter, classes, onChange }: Props) {
     onChange({ ...filter, classes: next })
   }
 
-  const isDefault = filter.classes.length === 0 && filter.period === 'all' && filter.grade === ''
+  const isDefault = filter.classes.length === 0 && filter.period === 'all'
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
@@ -86,7 +87,7 @@ export default function FilterBar({ filter, classes, onChange }: Props) {
 
       <select
         value={filter.period}
-        onChange={(e) => onChange({ ...filter, period: e.target.value as DashboardPeriod })}
+        onChange={(e) => onChange({ ...filter, period: e.target.value as DashboardPeriod, date_from: undefined, date_to: undefined })}
         className="text-sm px-3 py-1.5 rounded-[10px] border border-arctic-mist bg-fog text-carbon hover:border-pewter transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
       >
         {PERIODS.map((p) => (
@@ -94,17 +95,27 @@ export default function FilterBar({ filter, classes, onChange }: Props) {
         ))}
       </select>
 
-      <input
-        type="text"
-        value={filter.grade}
-        onChange={(e) => onChange({ ...filter, grade: e.target.value })}
-        placeholder="Grade…"
-        className="text-sm px-3 py-1.5 rounded-[10px] border border-arctic-mist bg-fog text-carbon placeholder-pewter w-24 hover:border-pewter transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
-      />
+      {filter.period === 'custom' && (
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={filter.date_from ?? ''}
+            onChange={(e) => onChange({ ...filter, date_from: e.target.value || undefined })}
+            className="text-sm px-3 py-1.5 rounded-[10px] border border-arctic-mist bg-fog text-carbon hover:border-pewter transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
+          />
+          <span className="text-xs text-pewter">to</span>
+          <input
+            type="date"
+            value={filter.date_to ?? ''}
+            onChange={(e) => onChange({ ...filter, date_to: e.target.value || undefined })}
+            className="text-sm px-3 py-1.5 rounded-[10px] border border-arctic-mist bg-fog text-carbon hover:border-pewter transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
+          />
+        </div>
+      )}
 
       {!isDefault && (
         <button
-          onClick={() => onChange({ classes: [], period: 'all', grade: '' })}
+          onClick={() => onChange({ classes: [], period: 'all' })}
           className="text-xs text-pewter hover:text-carbon transition-colors underline-offset-2 hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
         >
           Clear filters

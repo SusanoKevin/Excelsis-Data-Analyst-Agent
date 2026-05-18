@@ -18,6 +18,7 @@ export interface DashboardData {
   statusCounts: StatusCount[]
   atRisk:       AtRiskStudent[]
   sparklines:   Record<string, (number | null)[]>
+  trends:       { current: WeeklyStat[]; previous: WeeklyStat[] }
   loading:      boolean
   error:        string | null
 }
@@ -30,6 +31,7 @@ const INITIAL: DashboardData = {
   statusCounts: [],
   atRisk:       [],
   sparklines:   {},
+  trends:       { current: [], previous: [] },
   loading:      true,
   error:        null,
 }
@@ -53,17 +55,22 @@ function deriveStatusCounts(classStats: ClassStat[]): StatusCount[] {
   ]
 }
 
-function buildParams(filter: DashboardFilter) {
-  return {
+function buildParams(filter: DashboardFilter): Record<string, string> {
+  const params: Record<string, string> = {
     classes: filter.classes.join(','),
     period:  filter.period,
   }
+  if (filter.period === 'custom') {
+    if (filter.date_from) params.date_from = filter.date_from
+    if (filter.date_to)   params.date_to   = filter.date_to
+  }
+  return params
 }
 
 export function useDashboardData(filter: DashboardFilter): DashboardData {
   const [data, setData] = useState<DashboardData>(INITIAL)
 
-  const filterKey = `${filter.classes.join(',')}|${filter.period}|${filter.grade}`
+  const filterKey = `${filter.classes.join(',')}|${filter.period}|${filter.date_from ?? ''}|${filter.date_to ?? ''}`
 
   useEffect(() => {
     const controller = new AbortController()
@@ -77,7 +84,8 @@ export function useDashboardData(filter: DashboardFilter): DashboardData {
       api.get('/data/stats',    { params: { ...params, group_by: 'class'       }, signal }),
       api.get('/data/stats',    { params: { ...params, group_by: 'week'        }, signal }),
       api.get('/data/stats',    { params: { ...params, group_by: 'day_of_week' }, signal }),
-      api.get('/data/at-risk',  { params: { threshold: 75, classes: params.classes }, signal }),
+      // Spread params so date_from/date_to reach at-risk when custom period is active
+      api.get('/data/at-risk',  { params: { ...params, threshold: 75 }, signal }),
     ])
       .then(([summaryRes, classRes, weekRes, dowRes, atRiskRes]) => {
         if (signal.aborted) return
@@ -92,21 +100,24 @@ export function useDashboardData(filter: DashboardFilter): DashboardData {
           statusCounts: deriveStatusCounts(classStats),
           atRisk,
           sparklines:   {},
+          trends:       { current: [], previous: [] },
           loading:      false,
           error:        null,
         })
 
+        // Sparklines and trends are secondary — failures leave core dashboard intact
         if (atRisk.length > 0) {
           const ids = atRisk.map((s) => s.student_id).join(',')
-          api.get(`/data/sparklines`, { params: { ids }, signal })
-            .then((r) => {
-              if (!signal.aborted)
-                setData((d) => ({ ...d, sparklines: r.data }))
-            })
+          api.get('/data/sparklines', { params: { ids }, signal })
+            .then((r) => { if (!signal.aborted) setData((d) => ({ ...d, sparklines: r.data })) })
             .catch(() => {})
         }
+
+        api.get('/data/trends', { params: { classes: params.classes }, signal })
+          .then((r) => { if (!signal.aborted) setData((d) => ({ ...d, trends: r.data })) })
+          .catch(() => {})
       })
-      .catch((err) => {
+      .catch(() => {
         if (!signal.aborted)
           setData((d) => ({ ...d, loading: false, error: 'Failed to load dashboard data' }))
       })

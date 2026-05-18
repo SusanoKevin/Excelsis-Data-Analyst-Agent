@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-_lock = threading.Lock()
-
 import bcrypt as _bcrypt
 from jose import JWTError, jwt
+
+_lock  = threading.Lock()
+logger = logging.getLogger(__name__)
 
 from src.security import UserContext
 
@@ -47,7 +49,7 @@ def ensure_default_admin() -> None:
             password = os.getenv("ADMIN_PASSWORD", "admin123")
             users["admin"] = {"hashed_password": _hash(password)}
             _save(users)
-            print("Created default admin user (set ADMIN_PASSWORD in .env to change)")
+            logger.info("Created default admin user (set ADMIN_PASSWORD in .env to change)")
 
 
 def authenticate_user(username: str, password: str) -> UserContext | None:

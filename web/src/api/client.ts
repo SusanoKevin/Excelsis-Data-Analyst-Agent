@@ -42,8 +42,9 @@ export async function streamChat(
   })
 
   if (!res.ok) { onError(`Request failed: ${res.status}`); return }
+  if (!res.body) { onError('Stream unavailable'); return }
 
-  const reader  = res.body!.getReader()
+  const reader  = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
 

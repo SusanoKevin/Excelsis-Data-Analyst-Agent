@@ -6,13 +6,15 @@ const TOOL_LABELS: Record<string, string> = {
   get_summary:           'Summary',
   update_dashboard_view: 'Dashboard filter',
   run_sql_query:         'SQL query',
+  compare_periods:       'Period comparison',
+  compare_classes:       'Class comparison',
 }
 
 function buildDashboardUrl(f: DashboardFilterEvent): string {
   const params = new URLSearchParams()
   if (f.classes.length > 0) params.set('classes', f.classes.join(','))
   if (f.period !== 'all') params.set('period', f.period)
-  if (f.view !== 'overview') params.set('view', f.view)
+  if (f.view === 'class') params.set('view', f.view)
   const qs = params.toString()
   return `/dashboard${qs ? `?${qs}` : ''}`
 }

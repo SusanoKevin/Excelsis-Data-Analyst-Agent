@@ -5,13 +5,14 @@ export interface AuthUser {
 
 // ── Dashboard filter / drill state ────────────────────────────────────────────
 
-export type DashboardPeriod = 'all' | 'last_7_days' | 'last_30_days'
+export type DashboardPeriod = 'all' | 'last_7_days' | 'last_30_days' | 'custom'
 export type DrillLevel      = 'overview' | 'class' | 'student'
 
 export interface DashboardFilter {
-  classes: string[]
-  period:  DashboardPeriod
-  grade:   string
+  classes:    string[]
+  period:     DashboardPeriod
+  date_from?: string
+  date_to?:   string
 }
 
 export interface DashboardFilterEvent {
@@ -92,6 +93,3 @@ export interface AtRiskStudent {
   attendance_rate: number
 }
 
-export interface UserRecord {
-  username: string
-}
