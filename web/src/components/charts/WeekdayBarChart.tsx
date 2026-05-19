@@ -1,9 +1,11 @@
 import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { DayOfWeekStat } from '../../types'
+import { DimensionStat } from '../../types'
 
 interface Props {
-  data:    DayOfWeekStat[]
-  loading: boolean
+  data:         DimensionStat[]
+  loading:      boolean
+  selectedDay?: string
+  onSelect?:    (day: string) => void
 }
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -14,13 +16,13 @@ function rateColor(rate: number): string {
   return '#00a86b'
 }
 
-export default function WeekdayBarChart({ data, loading }: Props) {
+export default function WeekdayBarChart({ data, loading, selectedDay, onSelect }: Props) {
   if (loading) return <div className="h-48 bg-arctic-mist rounded animate-pulse" />
   if (!data.length) return <p className="text-xs text-pewter py-4">No data available.</p>
 
   const ordered = DAY_ORDER
     .map((d) => data.find((r) => r.day_of_week === d))
-    .filter(Boolean) as DayOfWeekStat[]
+    .filter(Boolean) as DimensionStat[]
 
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -42,9 +44,13 @@ export default function WeekdayBarChart({ data, loading }: Props) {
           formatter={(v) => [`${typeof v === 'number' ? v : ''}%`, 'Rate']}
           contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #ececec' }}
         />
-        <Bar dataKey="attendance_rate" radius={[4, 4, 0, 0]}>
+        <Bar dataKey="metric_rate" radius={[4, 4, 0, 0]} cursor={onSelect ? 'pointer' : 'default'}>
           {ordered.map((d, i) => (
-            <Cell key={i} fill={rateColor(d.attendance_rate)} />
+            <Cell
+              key={i}
+              fill={selectedDay && selectedDay !== d.day_of_week ? '#ececec' : rateColor(d.metric_rate)}
+              onClick={() => onSelect?.(d.day_of_week)}
+            />
           ))}
         </Bar>
       </BarChart>

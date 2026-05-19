@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 
+import numpy as np
 import pandas as pd
 import pyodbc
 import sqlglot
@@ -12,20 +13,6 @@ _FORBIDDEN = (
     exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create,
     exp.Alter, exp.TruncateTable, exp.Merge, exp.Command,
 )
-
-_GROUP_EXPR: dict[str, tuple[str, str]] = {
-    "class":       ("class", "class"),
-    "grade":       ("grade", "grade"),
-    "student_id":  ("CAST(student_id AS NVARCHAR(20))", "student_id"),
-    "week": (
-        "CONVERT(NVARCHAR(10),DATEADD(dd,1-DATEPART(dw,date),date),23)"
-        "+'/'+"
-        "CONVERT(NVARCHAR(10),DATEADD(dd,7-DATEPART(dw,date),date),23)",
-        "week",
-    ),
-    "month":       ("FORMAT(date,'yyyy-MM')", "month"),
-    "day_of_week": ("DATENAME(dw,date)",      "day_of_week"),
-}
 
 
 def _assert_select_only(sql: str) -> None:
@@ -75,15 +62,15 @@ class _TTLCache:
 
 
 def _ph(n: int) -> str:
-    """Return n comma-separated '?' placeholders."""
     return ",".join(["?"] * n)
 
 
-class SQLAttendanceStore:
+class SQLDataStore:
     """
-    Read-only SQL Server backend.
-    Table: attendance(student_id, student_name, class, grade, date DATE, status VARCHAR)
-    status values: 'present' | 'absent' | 'late' | 'excused'
+    Read-only SQL backend configurable for any tabular dataset.
+    Configure via env vars: PRIMARY_TABLE, METRIC_COLUMN, POSITIVE_VALUE,
+    DATE_COLUMN, ENTITY_COLUMN, ENTITY_NAME_COLUMN, GROUP_COLUMNS.
+    See .env.example for defaults and documentation.
     """
 
     def __init__(self) -> None:
@@ -93,7 +80,35 @@ class SQLAttendanceStore:
             for d in os.environ.get("SQL_DATABASES", self._primary_db).split(",")
             if d.strip()
         ]
+        self._table           = os.environ.get("PRIMARY_TABLE",       "attendance")
+        self._metric_col      = os.environ.get("METRIC_COLUMN",       "status")
+        self._positive_val    = os.environ.get("POSITIVE_VALUE",      "present")
+        self._date_col        = os.environ.get("DATE_COLUMN",         "date")
+        self._entity_col      = os.environ.get("ENTITY_COLUMN",       "student_id")
+        self._entity_name_col = os.environ.get("ENTITY_NAME_COLUMN",  "student_name")
+        self._group_cols: list[str] = [
+            c.strip()
+            for c in os.environ.get("GROUP_COLUMNS", "class,grade").split(",")
+            if c.strip()
+        ]
+        self._group_expr = self._build_group_expr()
         self._cache = _TTLCache(ttl=300)
+
+    def _build_group_expr(self) -> dict[str, tuple[str, str]]:
+        dc = self._date_col
+        expr: dict[str, tuple[str, str]] = {}
+        for col in self._group_cols:
+            expr[col] = (col, col)
+        expr[self._entity_col] = (f"CAST({self._entity_col} AS NVARCHAR(50))", self._entity_col)
+        expr["week"] = (
+            f"CONVERT(NVARCHAR(10),DATEADD(dd,1-DATEPART(dw,{dc}),{dc}),23)"
+            f"+'/'+"
+            f"CONVERT(NVARCHAR(10),DATEADD(dd,7-DATEPART(dw,{dc}),{dc}),23)",
+            "week",
+        )
+        expr["month"]       = (f"FORMAT({dc},'yyyy-MM')", "month")
+        expr["day_of_week"] = (f"DATENAME(dw,{dc})",     "day_of_week")
+        return expr
 
     def _query(self, sql: str, params: tuple = (), database: str | None = None) -> pd.DataFrame:
         _assert_select_only(sql)
@@ -107,181 +122,257 @@ class SQLAttendanceStore:
             conn.close()
 
     def summary(self) -> dict:
-        df = self._query("""
+        t, mc, pv = self._table, self._metric_col, self._positive_val
+        dc, ec    = self._date_col, self._entity_col
+        df = self._query(f"""
         SELECT
             COUNT(*)                                                          AS total_records,
-            COUNT(DISTINCT student_id)                                        AS unique_students,
-            CONVERT(NVARCHAR(10),MIN(date),23)                                AS date_from,
-            CONVERT(NVARCHAR(10),MAX(date),23)                                AS date_to,
-            ROUND(100.0*SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)
-                /NULLIF(COUNT(*),0),1)                                        AS overall_rate,
-            COUNT(CASE WHEN status='absent' THEN 1 END)                      AS total_absences
-        FROM attendance
-        WHERE status IN ('present','absent','late','excused')
-        """)
+            COUNT(DISTINCT {ec})                                              AS entity_count,
+            CONVERT(NVARCHAR(10),MIN({dc}),23)                               AS date_from,
+            CONVERT(NVARCHAR(10),MAX({dc}),23)                               AS date_to,
+            ROUND(100.0*SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)
+                /NULLIF(COUNT(*),0),1)                                        AS metric_rate,
+            SUM(CASE WHEN {mc}<>? THEN 1 ELSE 0 END)                        AS below_threshold_count
+        FROM {t}
+        """, params=(pv, pv))
+
         if df.empty or int(df["total_records"].iloc[0]) == 0:
             return {"status": "no_data"}
 
-        classes_df = self._query(
-            "SELECT DISTINCT class FROM attendance WHERE class IS NOT NULL ORDER BY class"
-        )
+        first_dim = self._group_cols[0] if self._group_cols else None
+        dims_df = self._query(
+            f"SELECT DISTINCT {first_dim} FROM {t} "
+            f"WHERE {first_dim} IS NOT NULL ORDER BY {first_dim}"
+        ) if first_dim else pd.DataFrame()
+
         row = df.iloc[0]
         return {
-            "total_records":           int(row["total_records"]),
-            "unique_students":         int(row["unique_students"]),
-            "date_range":              {"from": str(row["date_from"]), "to": str(row["date_to"])},
-            "overall_attendance_rate": float(row["overall_rate"]),
-            "total_absences":          int(row["total_absences"]),
-            "classes":                 classes_df["class"].tolist() if not classes_df.empty else [],
+            "total_records":         int(row["total_records"]),
+            "entity_count":          int(row["entity_count"]),
+            "date_range":            {"from": str(row["date_from"]), "to": str(row["date_to"])},
+            "metric_rate":           float(row["metric_rate"]),
+            "below_threshold_count": int(row["below_threshold_count"]),
+            "dimensions":            dims_df[first_dim].tolist() if first_dim and not dims_df.empty else [],
         }
 
     def compute_stats(
         self,
-        group_by:  str = "class",
+        group_by:  str = "",
         period:    str = "all",
         classes:   list[str] | None = None,
         date_from: str | None = None,
         date_to:   str | None = None,
     ) -> pd.DataFrame:
+        group_by  = group_by or (self._group_cols[0] if self._group_cols else self._entity_col)
         cache_key = f"stats:{group_by}:{period}:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
-        cached = self._cache.get(cache_key)
+        cached    = self._cache.get(cache_key)
         if cached is not None:
             return cached
 
-        col_expr, col_alias = _GROUP_EXPR.get(group_by, _GROUP_EXPR["class"])
-        params: list = []
+        col_expr, col_alias = self._group_expr.get(group_by, (group_by, group_by))
+        t, mc, pv, dc = self._table, self._metric_col, self._positive_val, self._date_col
+        params: list = [pv, pv]
 
-        # Explicit date bounds take precedence over period shorthand.
-        # Using parameterized queries to prevent SQL injection.
         if date_from or date_to:
             period_parts = []
             if date_from:
-                period_parts.append("AND date >= ?")
+                period_parts.append(f"AND {dc} >= ?")
                 params.append(date_from)
             if date_to:
-                period_parts.append("AND date <= ?")
+                period_parts.append(f"AND {dc} <= ?")
                 params.append(date_to)
             period_clause = " ".join(period_parts)
         elif period == "last_7_days":
-            period_clause = "AND date >= (SELECT DATEADD(dd,-7,MAX(date)) FROM attendance)"
+            period_clause = f"AND {dc} >= (SELECT DATEADD(dd,-7,MAX({dc})) FROM {t})"
         elif period == "last_30_days":
-            period_clause = "AND date >= (SELECT DATEADD(dd,-30,MAX(date)) FROM attendance)"
+            period_clause = f"AND {dc} >= (SELECT DATEADD(dd,-30,MAX({dc})) FROM {t})"
         elif period == "prior_30_days":
             period_clause = (
-                "AND date >= (SELECT DATEADD(dd,-60,MAX(date)) FROM attendance) "
-                "AND date <  (SELECT DATEADD(dd,-30,MAX(date)) FROM attendance)"
+                f"AND {dc} >= (SELECT DATEADD(dd,-60,MAX({dc})) FROM {t}) "
+                f"AND {dc} <  (SELECT DATEADD(dd,-30,MAX({dc})) FROM {t})"
             )
         else:
             period_clause = ""
 
-        class_clause = ""
-        if classes:
-            class_clause = f"AND class IN ({_ph(len(classes))})"
+        group_clause = ""
+        if classes and self._group_cols:
+            group_clause = f"AND {self._group_cols[0]} IN ({_ph(len(classes))})"
             params.extend(classes)
 
         result = self._query(f"""
         SELECT
             {col_expr}  AS [{col_alias}],
-            COUNT(*)                                                     AS total,
-            SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)           AS present,
-            SUM(CASE WHEN status='absent'  THEN 1 ELSE 0 END)           AS absent,
-            SUM(CASE WHEN status='late'    THEN 1 ELSE 0 END)           AS late,
-            ROUND(100.0*SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)
-                /NULLIF(COUNT(*),0),1)                                   AS attendance_rate
-        FROM attendance
-        WHERE status IN ('present','absent','late','excused')
+            COUNT(*)                                                          AS total,
+            SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)                         AS positive_count,
+            ROUND(100.0*SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)
+                /NULLIF(COUNT(*),0),1)                                        AS metric_rate
+        FROM {t}
+        WHERE 1=1
         {period_clause}
-        {class_clause}
+        {group_clause}
         GROUP BY {col_expr}
         """, params=tuple(params))
         self._cache.set(cache_key, result)
         return result
 
-    def get_at_risk(
+    def get_threshold_alerts(
         self,
         threshold: float = 75.0,
         classes:   list[str] | None = None,
         date_from: str | None = None,
         date_to:   str | None = None,
     ) -> pd.DataFrame:
-        cache_key = f"at_risk:{threshold}:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
-        cached = self._cache.get(cache_key)
+        cache_key = f"alerts:{threshold}:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
+        cached    = self._cache.get(cache_key)
         if cached is not None:
             return cached
 
-        params: list = []
-        class_clause = ""
-        if classes:
-            class_clause = f"AND class IN ({_ph(len(classes))})"
+        t, mc, pv, dc = self._table, self._metric_col, self._positive_val, self._date_col
+        ec, enc       = self._entity_col, self._entity_name_col
+        grp0          = self._group_cols[0] if self._group_cols else None
+        params: list  = [pv, pv]
+
+        group_clause = ""
+        if classes and grp0:
+            group_clause = f"AND {grp0} IN ({_ph(len(classes))})"
             params.extend(classes)
 
-        # Parameterized date bounds prevent SQL injection on user-supplied dates.
         date_clause = ""
         if date_from:
-            date_clause += "AND date >= ? "
+            date_clause += f"AND {dc} >= ? "
             params.append(date_from)
         if date_to:
-            date_clause += "AND date <= ? "
+            date_clause += f"AND {dc} <= ? "
             params.append(date_to)
 
+        params.append(pv)
         params.append(threshold)
 
         result = self._query(f"""
         SELECT
-            student_id,
-            MAX(student_name)                                              AS name,
-            MAX(class)                                                     AS cls,
-            COUNT(*)                                                       AS total,
-            SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)             AS present,
-            SUM(CASE WHEN status='absent'  THEN 1 ELSE 0 END)             AS absent,
-            SUM(CASE WHEN status='late'    THEN 1 ELSE 0 END)             AS late,
-            ROUND(100.0*SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)
-                /NULLIF(COUNT(*),0),1)                                     AS attendance_rate
-        FROM attendance
-        WHERE status IN ('present','absent','late','excused')
-        {class_clause}
+            {ec}                                                              AS entity_id,
+            MAX({enc})                                                        AS label,
+            {f"MAX({grp0})" if grp0 else "NULL"}                             AS group_name,
+            COUNT(*)                                                          AS total,
+            SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)                         AS positive_count,
+            ROUND(100.0*SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)
+                /NULLIF(COUNT(*),0),1)                                        AS metric_rate
+        FROM {t}
+        WHERE 1=1
+        {group_clause}
         {date_clause}
-        GROUP BY student_id
-        HAVING ROUND(100.0*SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)
+        GROUP BY {ec}
+        HAVING ROUND(100.0*SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)
             /NULLIF(COUNT(*),0),1) < ?
-        ORDER BY attendance_rate ASC
+        ORDER BY metric_rate ASC
         """, params=tuple(params))
         self._cache.set(cache_key, result)
         return result
 
-    def student_weekly_rates(self, student_ids: list, weeks: int = 6) -> dict:
-        if not student_ids:
+    def entity_weekly_rates(self, entity_ids: list, weeks: int = 6) -> dict:
+        if not entity_ids:
             return {}
+        t, mc, pv, dc, ec = self._table, self._metric_col, self._positive_val, self._date_col, self._entity_col
+        week_expr = (
+            f"CONVERT(NVARCHAR(10),DATEADD(dd,1-DATEPART(dw,{dc}),{dc}),23)"
+            f"+'/'+"
+            f"CONVERT(NVARCHAR(10),DATEADD(dd,7-DATEPART(dw,{dc}),{dc}),23)"
+        )
         df = self._query(f"""
         SELECT
-            student_id,
-            CONVERT(NVARCHAR(10),DATEADD(dd,1-DATEPART(dw,date),date),23)
-                +'/'
-                +CONVERT(NVARCHAR(10),DATEADD(dd,7-DATEPART(dw,date),date),23) AS week,
-            COUNT(*)                                           AS total,
-            SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) AS present
-        FROM attendance
-        WHERE status IN ('present','absent','late','excused')
-          AND student_id IN ({_ph(len(student_ids))})
-        GROUP BY
-            student_id,
-            CONVERT(NVARCHAR(10),DATEADD(dd,1-DATEPART(dw,date),date),23)
-                +'/'
-                +CONVERT(NVARCHAR(10),DATEADD(dd,7-DATEPART(dw,date),date),23)
+            {ec}                                        AS entity_id,
+            {week_expr}                                 AS week,
+            COUNT(*)                                    AS total,
+            SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)    AS positive_count
+        FROM {t}
+        WHERE {ec} IN ({_ph(len(entity_ids))})
+        GROUP BY {ec}, {week_expr}
         ORDER BY week ASC
-        """, params=tuple(student_ids))
+        """, params=(pv, *entity_ids))
+
         if df.empty:
             return {}
 
         all_weeks = sorted(df["week"].unique())[-weeks:]
         df        = df[df["week"].isin(all_weeks)].copy()
-        df["rate"] = (df["present"] / df["total"] * 100).round(1)
+        df["rate"] = (df["positive_count"] / df["total"] * 100).round(1)
         pivot = (
-            df.pivot(index="student_id", columns="week", values="rate")
+            df.pivot(index="entity_id", columns="week", values="rate")
             .reindex(columns=all_weeks)
         )
         return {
-            int(sid): [None if pd.isna(v) else float(v) for v in pivot.loc[sid]]
-            if sid in pivot.index else [None] * len(all_weeks)
-            for sid in student_ids
+            eid: [None if pd.isna(v) else float(v) for v in pivot.loc[eid]]
+            if eid in pivot.index else [None] * len(all_weeks)
+            for eid in entity_ids
+        }
+
+    def compute_statistical_summary(
+        self,
+        group_by:  str = "",
+        period:    str = "all",
+        classes:   list[str] | None = None,
+        date_from: str | None = None,
+        date_to:   str | None = None,
+    ) -> dict:
+        df = self.compute_stats(group_by, period, classes, date_from, date_to)
+        if df.empty or "metric_rate" not in df.columns:
+            return {"error": "No data available."}
+        return df["metric_rate"].describe().round(1).to_dict()
+
+    def detect_anomalies(
+        self,
+        group_by:  str   = "",
+        sigma:     float = 2.0,
+        period:    str   = "all",
+        classes:   list[str] | None = None,
+        date_from: str | None = None,
+        date_to:   str | None = None,
+    ) -> pd.DataFrame:
+        df = self.compute_stats(group_by, period, classes, date_from, date_to).copy()
+        if df.empty or "metric_rate" not in df.columns:
+            return pd.DataFrame()
+        mean = df["metric_rate"].mean()
+        std  = df["metric_rate"].std()
+        if std == 0:
+            return pd.DataFrame()
+        df["z_score"] = ((df["metric_rate"] - mean) / std).round(2)
+        return df[df["z_score"].abs() > sigma].sort_values("z_score").reset_index(drop=True)
+
+    def get_top_n(
+        self,
+        group_by:  str  = "",
+        n:         int  = 10,
+        ascending: bool = True,
+        period:    str  = "all",
+        classes:   list[str] | None = None,
+        date_from: str | None = None,
+        date_to:   str | None = None,
+    ) -> pd.DataFrame:
+        df = self.compute_stats(group_by, period, classes, date_from, date_to)
+        if df.empty or "metric_rate" not in df.columns:
+            return pd.DataFrame()
+        return (
+            df.nsmallest(n, "metric_rate") if ascending
+            else df.nlargest(n, "metric_rate")
+        ).reset_index(drop=True)
+
+    def analyze_weekly_trend(
+        self,
+        classes:   list[str] | None = None,
+        date_from: str | None = None,
+        date_to:   str | None = None,
+    ) -> dict:
+        df = self.compute_stats("week", "all", classes, date_from, date_to)
+        if df.empty or "metric_rate" not in df.columns or len(df) < 2:
+            return {"direction": "unknown", "slope_per_week": 0.0, "weeks": []}
+        df    = df.sort_values("week").reset_index(drop=True)
+        rates = df["metric_rate"].values.astype(float)
+        slope = float(np.polyfit(range(len(rates)), rates, 1)[0])
+        if   slope >  0.1: direction = "improving"
+        elif slope < -0.1: direction = "declining"
+        else:              direction = "stable"
+        return {
+            "direction":      direction,
+            "slope_per_week": round(slope, 2),
+            "weeks":          df.to_dict(orient="records"),
         }

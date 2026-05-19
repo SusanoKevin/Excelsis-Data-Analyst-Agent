@@ -11,8 +11,10 @@ import {
 import { WeeklyStat } from '../../types'
 
 interface Props {
-  data:        WeeklyStat[]
-  loading:     boolean
+  data:          WeeklyStat[]
+  loading:       boolean
+  selectedWeek?: string
+  onSelect?:     (week: string) => void
 }
 
 function fmtWeekLabel(label: string): string {
@@ -23,7 +25,7 @@ function fmtWeekLabel(label: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-export default function WeeklyTrendChart({ data, loading }: Props) {
+export default function WeeklyTrendChart({ data, loading, selectedWeek, onSelect }: Props) {
   if (loading) {
     return <div className="h-48 bg-arctic-mist rounded animate-pulse" />
   }
@@ -59,12 +61,27 @@ export default function WeeklyTrendChart({ data, loading }: Props) {
         />
         <Area
           type="monotone"
-          dataKey="attendance_rate"
+          dataKey="metric_rate"
           stroke="#007aff"
           strokeWidth={2}
           fill="url(#trendGrad)"
-          dot={{ r: 3, fill: '#007aff', strokeWidth: 0 }}
-          activeDot={{ r: 5 }}
+          dot={(props: any) => {
+            const isSelected = selectedWeek && props.payload?.week === selectedWeek
+            return (
+              <circle
+                key={props.key}
+                cx={props.cx}
+                cy={props.cy}
+                r={isSelected ? 5 : 3}
+                fill={isSelected ? '#007aff' : (selectedWeek ? '#b0c8ef' : '#007aff')}
+                strokeWidth={0}
+                cursor={onSelect ? 'pointer' : 'default'}
+                onClick={() => onSelect?.(props.payload?.week)}
+              />
+            )
+          }}
+          activeDot={{ r: 5, cursor: onSelect ? 'pointer' : 'default',
+            onClick: (_: unknown, payload: any) => onSelect?.(payload?.activePayload?.[0]?.payload?.week) }}
         />
       </AreaChart>
     </ResponsiveContainer>

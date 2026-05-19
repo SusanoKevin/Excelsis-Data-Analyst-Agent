@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react'
 import api from '../api/client'
 import {
-  AttendanceSummary,
-  AtRiskStudent,
-  ClassStat,
+  AlertItem,
+  DataSummary,
   DashboardFilter,
-  DayOfWeekStat,
+  DimensionStat,
+  GroupStat,
   StatusCount,
   WeeklyStat,
 } from '../types'
 
 export interface DashboardData {
-  summary:      AttendanceSummary | null
-  classStats:   ClassStat[]
+  summary:      DataSummary | null
+  classStats:   GroupStat[]
   weeklyStats:  WeeklyStat[]
-  dowStats:     DayOfWeekStat[]
+  dowStats:     DimensionStat[]
   statusCounts: StatusCount[]
-  atRisk:       AtRiskStudent[]
+  atRisk:       AlertItem[]
   sparklines:   Record<string, (number | null)[]>
   trends:       { current: WeeklyStat[]; previous: WeeklyStat[] }
   loading:      boolean
@@ -36,22 +36,18 @@ const INITIAL: DashboardData = {
   error:        null,
 }
 
-function deriveStatusCounts(classStats: ClassStat[]): StatusCount[] {
-  const totals = classStats.reduce(
+function deriveThresholdBreakdown(groupStats: GroupStat[]): StatusCount[] {
+  const totals = groupStats.reduce(
     (acc, row) => ({
-      total:   acc.total   + row.total,
-      present: acc.present + row.present,
-      absent:  acc.absent  + row.absent,
-      late:    acc.late    + row.late,
+      total:          acc.total          + row.total,
+      positive_count: acc.positive_count + row.positive_count,
     }),
-    { total: 0, present: 0, absent: 0, late: 0 }
+    { total: 0, positive_count: 0 }
   )
-  const excused = Math.max(0, totals.total - totals.present - totals.absent - totals.late)
+  const below = Math.max(0, totals.total - totals.positive_count)
   return [
-    { name: 'Present', value: totals.present, color: '#00a86b' },
-    { name: 'Absent',  value: totals.absent,  color: '#e74c3c' },
-    { name: 'Late',    value: totals.late,    color: '#f5a623' },
-    ...(excused > 0 ? [{ name: 'Excused', value: excused, color: '#9b59b6' }] : []),
+    { name: 'Above threshold', value: totals.positive_count, color: '#00a86b' },
+    { name: 'Below threshold', value: below,                  color: '#e74c3c' },
   ]
 }
 
@@ -84,20 +80,19 @@ export function useDashboardData(filter: DashboardFilter): DashboardData {
       api.get('/data/stats',    { params: { ...params, group_by: 'class'       }, signal }),
       api.get('/data/stats',    { params: { ...params, group_by: 'week'        }, signal }),
       api.get('/data/stats',    { params: { ...params, group_by: 'day_of_week' }, signal }),
-      // Spread params so date_from/date_to reach at-risk when custom period is active
-      api.get('/data/at-risk',  { params: { ...params, threshold: 75 }, signal }),
+      api.get('/data/alerts',   { params: { ...params, threshold: 75 }, signal }),
     ])
-      .then(([summaryRes, classRes, weekRes, dowRes, atRiskRes]) => {
+      .then(([summaryRes, classRes, weekRes, dowRes, alertsRes]) => {
         if (signal.aborted) return
-        const atRisk: AtRiskStudent[] = atRiskRes.data
-        const classStats: ClassStat[] = classRes.data
+        const atRisk: AlertItem[]     = alertsRes.data
+        const classStats: GroupStat[] = classRes.data
 
         setData({
           summary:      summaryRes.data,
           classStats,
           weeklyStats:  weekRes.data,
           dowStats:     dowRes.data,
-          statusCounts: deriveStatusCounts(classStats),
+          statusCounts: deriveThresholdBreakdown(classStats),
           atRisk,
           sparklines:   {},
           trends:       { current: [], previous: [] },
@@ -105,9 +100,8 @@ export function useDashboardData(filter: DashboardFilter): DashboardData {
           error:        null,
         })
 
-        // Sparklines and trends are secondary — failures leave core dashboard intact
         if (atRisk.length > 0) {
-          const ids = atRisk.map((s) => s.student_id).join(',')
+          const ids = atRisk.map((s) => s.entity_id).join(',')
           api.get('/data/sparklines', { params: { ids }, signal })
             .then((r) => { if (!signal.aborted) setData((d) => ({ ...d, sparklines: r.data })) })
             .catch(() => {})

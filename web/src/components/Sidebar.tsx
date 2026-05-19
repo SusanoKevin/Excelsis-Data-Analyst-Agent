@@ -16,7 +16,7 @@ export default function Sidebar() {
     <aside className="w-52 min-h-screen bg-fog border-r border-arctic-mist flex flex-col">
       <div className="px-5 py-6 border-b border-arctic-mist">
         <p className="text-xs text-pewter uppercase tracking-widest mb-1">Excelsis 360</p>
-        <p className="text-sm text-carbon font-semibold">Attendance Analyst</p>
+        <p className="text-sm text-carbon font-semibold">Data Analyst</p>
       </div>
 
       <nav className="flex-1 py-4 px-3 space-y-0.5">

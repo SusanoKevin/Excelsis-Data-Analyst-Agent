@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { streamChat } from '../api/client'
 import { DashboardFilterEvent, Message } from '../types'
 
-const STORAGE_KEY = 'excelsis_chat'
+const STORAGE_KEY = 'excelsis_data_chat'
 
 function loadHistory(): Message[] {
   try {

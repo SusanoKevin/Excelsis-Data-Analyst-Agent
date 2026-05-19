@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import WeeklyTrendChart from './charts/WeeklyTrendChart'
-import { AtRiskStudent, DrillLevel, WeeklyStat } from '../types'
+import { AlertItem, DrillLevel, WeeklyStat } from '../types'
+import { ChartSelection } from '../hooks/useChartSelection'
 
 const DANGER_HEX  = '#e74c3c'
 const WARNING_HEX = '#f5a623'
 
-type SortCol = 'present' | 'absent' | 'attendance_rate'
+type SortCol = 'positive_count' | 'metric_rate'
 type SortDir = 'asc' | 'desc'
 
 function rateColor(rate: number) {
@@ -37,30 +38,19 @@ function Sparkline({ points, rate }: { points: (number | null)[], rate: number }
 
   return (
     <svg width={W} height={H} className="overflow-visible" aria-hidden="true">
-      <path
-        d={segs.join(' ')}
-        fill="none"
+      <path d={segs.join(' ')} fill="none"
         stroke={rate < 70 ? DANGER_HEX : WARNING_HEX}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+        strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
 function SortTh({ col, label, active, dir, onSort }: {
-  col:    SortCol
-  label:  string
-  active: boolean
-  dir:    SortDir
-  onSort: (col: SortCol) => void
+  col: SortCol; label: string; active: boolean; dir: SortDir; onSort: (col: SortCol) => void
 }) {
   return (
-    <th
-      className="px-5 py-3 text-right text-xs text-pewter uppercase tracking-widest cursor-pointer select-none hover:text-carbon transition-colors"
-      onClick={() => onSort(col)}
-    >
+    <th className="px-5 py-3 text-right text-xs text-pewter uppercase tracking-widest cursor-pointer select-none hover:text-carbon transition-colors"
+      onClick={() => onSort(col)}>
       {label}
       <span className="ml-1 opacity-50">{active ? (dir === 'asc' ? '↑' : '↓') : '↕'}</span>
     </th>
@@ -71,31 +61,37 @@ interface Props {
   drillLevel:   DrillLevel
   drillClass:   string | null
   drillStudent: number | null
-  atRisk:       AtRiskStudent[]
+  atRisk:       AlertItem[]
   sparklines:   Record<string, (number | null)[]>
   loading:      boolean
-  onInspect:    (studentId: number) => void
+  onInspect:    (entityId: number) => void
+  selection?:   ChartSelection
 }
 
 export default function DrilldownPanel({
-  drillLevel, drillClass, drillStudent, atRisk, sparklines, loading, onInspect,
+  drillLevel, drillClass, drillStudent, atRisk, sparklines, loading, onInspect, selection,
 }: Props) {
-  const [sortCol, setSortCol] = useState<SortCol>('attendance_rate')
+  const [sortCol, setSortCol] = useState<SortCol>('metric_rate')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
-  const toggleSort = (col: SortCol) => {
-    if (col === sortCol) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+  function toggleSort(col: SortCol) {
+    if (col === sortCol) setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
   }
 
-  if (drillLevel === 'overview') return null
+  const showTable = drillLevel === 'group' ||
+    (drillLevel === 'overview' && !!(selection?.group || selection?.threshold))
 
-  if (drillLevel === 'class') {
-    const students = drillClass
-      ? atRisk.filter((s) => s.cls === drillClass)
-      : atRisk
+  if (showTable) {
+    const effectiveGroup = drillLevel === 'group' ? drillClass : (selection?.group ?? null)
+    const entities = atRisk.filter((s) => {
+      const groupMatch = !effectiveGroup || s.group_name === effectiveGroup
+      const thresholdMatch = !selection?.threshold ||
+        (selection.threshold === 'above' ? s.metric_rate >= 75 : s.metric_rate < 75)
+      return groupMatch && thresholdMatch
+    })
 
-    const sorted = [...students].sort((a, b) => {
+    const sorted = [...entities].sort((a, b) => {
       const mult = sortDir === 'asc' ? 1 : -1
       return (a[sortCol] - b[sortCol]) * mult
     })
@@ -104,46 +100,43 @@ export default function DrilldownPanel({
       <div className="bg-fog border border-arctic-mist rounded-[10px] overflow-hidden mb-8">
         <div className="px-5 py-4 border-b border-arctic-mist">
           <h3 className="text-sm font-semibold text-carbon">
-            At-Risk Students{drillClass ? ` — ${drillClass}` : ''}
+            Threshold Alerts{effectiveGroup ? ` — ${effectiveGroup}` : ''}
           </h3>
-          <p className="text-xs text-pewter mt-0.5">Below 75% attendance threshold</p>
+          <p className="text-xs text-pewter mt-0.5">Below 75% metric threshold</p>
         </div>
 
         {sorted.length === 0 ? (
-          <p className="text-xs text-pewter px-5 py-4">No at-risk students in this class.</p>
+          <p className="text-xs text-pewter px-5 py-4">No threshold alerts in this group.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <caption className="sr-only">At-risk students{drillClass ? ` for ${drillClass}` : ''}</caption>
+              <caption className="sr-only">Threshold alerts{effectiveGroup ? ` for ${effectiveGroup}` : ''}</caption>
               <thead>
                 <tr className="border-b border-arctic-mist">
-                  <th className="px-5 py-3 text-left text-xs text-pewter uppercase tracking-widest">Student</th>
-                  <SortTh col="present"         label="Present" active={sortCol === 'present'}         dir={sortDir} onSort={toggleSort} />
-                  <SortTh col="absent"          label="Absent"  active={sortCol === 'absent'}          dir={sortDir} onSort={toggleSort} />
-                  <SortTh col="attendance_rate" label="Rate"    active={sortCol === 'attendance_rate'} dir={sortDir} onSort={toggleSort} />
+                  <th className="px-5 py-3 text-left text-xs text-pewter uppercase tracking-widest">Entity</th>
+                  <SortTh col="positive_count" label="Above"  active={sortCol === 'positive_count'} dir={sortDir} onSort={toggleSort} />
+                  <SortTh col="metric_rate"    label="Rate"   active={sortCol === 'metric_rate'}    dir={sortDir} onSort={toggleSort} />
                   <th className="px-5 py-3 text-left text-xs text-pewter uppercase tracking-widest">6-week trend</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
               <tbody>
                 {sorted.map((s) => {
-                  const spark = sparklines[String(s.student_id)]
+                  const spark = sparklines[String(s.entity_id)]
+                  const highlighted = selection?.group && s.group_name === selection.group
                   return (
-                    <tr key={s.student_id} className={rowStyle(s.attendance_rate)}>
-                      <td className="px-5 py-3 text-carbon">{s.name ?? `#${s.student_id}`}</td>
-                      <td className="px-5 py-3 text-right text-pewter font-mono text-xs">{s.present}</td>
-                      <td className="px-5 py-3 text-right text-pewter font-mono text-xs">{s.absent}</td>
-                      <td className={`px-5 py-3 text-right font-mono text-xs font-medium ${rateColor(s.attendance_rate)}`}>
-                        {s.attendance_rate}%
+                    <tr key={s.entity_id} className={`${rowStyle(s.metric_rate)}${highlighted ? ' ring-1 ring-inset ring-link-blue/30' : ''}`}>
+                      <td className="px-5 py-3 text-carbon">{s.label ?? `#${s.entity_id}`}</td>
+                      <td className="px-5 py-3 text-right text-pewter font-mono text-xs">{s.positive_count}</td>
+                      <td className={`px-5 py-3 text-right font-mono text-xs font-medium ${rateColor(s.metric_rate)}`}>
+                        {s.metric_rate}%
                       </td>
                       <td className="px-5 py-3">
-                        {spark && <Sparkline points={spark} rate={s.attendance_rate} />}
+                        {spark && <Sparkline points={spark} rate={s.metric_rate} />}
                       </td>
                       <td className="px-5 py-3">
-                        <button
-                          onClick={() => onInspect(s.student_id)}
-                          className="text-xs text-link-blue hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
-                        >
+                        <button onClick={() => onInspect(s.entity_id)}
+                          className="text-xs text-link-blue hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue">
                           Inspect
                         </button>
                       </td>
@@ -158,28 +151,26 @@ export default function DrilldownPanel({
     )
   }
 
-  // drillLevel === 'student'
-  if (drillStudent === null) return null
-  const student   = atRisk.find((s) => s.student_id === drillStudent)
+  if (drillLevel !== 'entity' || drillStudent === null) return null
+
+  const entity    = atRisk.find((s) => s.entity_id === drillStudent)
   const sparkRaw  = sparklines[String(drillStudent)] ?? []
   const weeklyData: WeeklyStat[] = sparkRaw.map((rate, i) => ({
-    week:            `Week ${i + 1}`,
-    total:           0,
-    present:         0,
-    absent:          0,
-    late:            0,
-    attendance_rate: rate ?? 0,
+    week:           `Week ${i + 1}`,
+    total:          0,
+    positive_count: 0,
+    metric_rate:    rate ?? 0,
   }))
 
   return (
     <div className="bg-fog border border-arctic-mist rounded-[10px] overflow-hidden mb-8">
       <div className="px-5 py-4 border-b border-arctic-mist">
         <h3 className="text-sm font-semibold text-carbon">
-          {student?.name ?? `Student #${drillStudent}`}
+          {entity?.label ?? `Entity #${drillStudent}`}
         </h3>
-        {student && (
+        {entity && (
           <p className="text-xs text-pewter mt-0.5">
-            {student.cls} · {student.attendance_rate}% attendance
+            {entity.group_name} · {entity.metric_rate}% metric rate
           </p>
         )}
       </div>

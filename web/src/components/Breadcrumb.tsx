@@ -4,11 +4,11 @@ interface Props {
   drillLevel:   DrillLevel
   drillClass:   string | null
   drillStudent: number | null
-  studentName?: string
+  entityName?:  string
   onNavigate:   (level: DrillLevel) => void
 }
 
-export default function Breadcrumb({ drillLevel, drillClass, drillStudent, studentName, onNavigate }: Props) {
+export default function Breadcrumb({ drillLevel, drillClass, drillStudent, entityName, onNavigate }: Props) {
   if (drillLevel === 'overview') return null
 
   return (
@@ -23,11 +23,11 @@ export default function Breadcrumb({ drillLevel, drillClass, drillStudent, stude
       {drillClass && (
         <>
           <span aria-hidden="true" className="text-arctic-mist select-none">›</span>
-          {drillLevel === 'class' ? (
+          {drillLevel === 'group' ? (
             <span className="text-carbon font-medium">{drillClass}</span>
           ) : (
             <button
-              onClick={() => onNavigate('class')}
+              onClick={() => onNavigate('group')}
               className="hover:text-carbon transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue focus-visible:ring-offset-1"
             >
               {drillClass}
@@ -36,10 +36,10 @@ export default function Breadcrumb({ drillLevel, drillClass, drillStudent, stude
         </>
       )}
 
-      {drillLevel === 'student' && drillStudent !== null && (
+      {drillLevel === 'entity' && drillStudent !== null && (
         <>
           <span aria-hidden="true" className="text-arctic-mist select-none">›</span>
-          <span className="text-carbon font-medium">{studentName ?? `Student #${drillStudent}`}</span>
+          <span className="text-carbon font-medium">{entityName ?? `Entity #${drillStudent}`}</span>
         </>
       )}
     </nav>

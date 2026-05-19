@@ -12,6 +12,8 @@ __pycache__/
 data/dashboards/
 logs/
 data/chroma_db/
+.chroma/
+docs/*.pdf
 .cursor/
 web/node_modules/
 web/dist/

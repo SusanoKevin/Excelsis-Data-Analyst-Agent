@@ -21,8 +21,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.security import ADMIN_USER
 from src.tools import (
-    query_attendance,
-    get_at_risk_students,
+    query_data,
+    get_threshold_alerts,
     get_summary,
 )
 
@@ -33,7 +33,7 @@ from src.tools import (
 
 def _make_store(classes=("10A", "10B", "11A")):
     """Minimal AttendanceDataStore seeded with synthetic data (no SQL Server needed)."""
-    from src.data_store import AttendanceDataStore
+    from tests.fixtures import AttendanceDataStore
 
     rows = []
     for cls in classes:
@@ -68,10 +68,10 @@ def _tool_config(store=None) -> dict:
 class TestZeroKnowledge:
     """TC1: Verify tools can be called and receive real data (no LLM needed)."""
 
-    def test_query_attendance_returns_data(self):
+    def test_query_data_returns_data(self):
         store  = _make_store()
         cfg    = _tool_config(store=store)
-        result = query_attendance.invoke({"query": "attendance by class"}, config=cfg)
+        result = query_data.invoke({"group_by": "class"}, config=cfg)
         assert "10A" in result
         assert "10B" in result
 
@@ -82,17 +82,17 @@ class TestZeroKnowledge:
         result = get_summary.invoke({}, config=cfg)
         data   = json.loads(result)
         assert "total_records" in data
-        assert "overall_attendance_rate" in data
+        assert "metric_rate" in data
 
     def test_no_store_returns_graceful_message(self):
         cfg    = _tool_config(store=None)
-        result = query_attendance.invoke({"query": "attendance by class"}, config=cfg)
+        result = query_data.invoke({"group_by": "class"}, config=cfg)
         assert "No data store" in result
 
     def test_at_risk_returns_below_threshold(self):
         store  = _make_store()
         cfg    = _tool_config(store=store)
-        result = get_at_risk_students.invoke({"threshold": 75.0}, config=cfg)
+        result = get_threshold_alerts.invoke({"threshold": 75.0}, config=cfg)
         assert isinstance(result, str)
         assert "No data store" not in result
 
@@ -101,12 +101,12 @@ class TestZeroKnowledge:
         from src.tools import update_dashboard_view
         cfg    = _tool_config()
         result = update_dashboard_view.invoke(
-            {"classes": ["10A"], "period": "last_30_days", "view": "class"},
+            {"classes": ["10A"], "period": "last_30_days", "view": "group"},
             config=cfg,
         )
         payload = json.loads(result)
         assert payload["classes"] == ["10A"]
-        assert payload["view"] == "class"
+        assert payload["view"] == "group"
         assert payload["period"] == "last_30_days"
 
 

@@ -16,8 +16,8 @@ def summary(request: Request, _: UserContext = Depends(get_current_user)):
     return get_store(request).summary()
 
 
-@router.get("/at-risk")
-def at_risk(
+@router.get("/alerts")
+def alerts(
     request: Request,
     threshold: float = 75.0,
     classes: str = "",
@@ -26,7 +26,7 @@ def at_risk(
     _: UserContext = Depends(get_current_user),
 ):
     store = get_store(request)
-    df    = store.get_at_risk(
+    df    = store.get_threshold_alerts(
         threshold=threshold,
         classes=_parse_classes(classes),
         date_from=date_from or None,
@@ -78,8 +78,8 @@ def sparklines(
     ids: str,
     _: UserContext = Depends(get_current_user),
 ):
-    store      = get_store(request)
-    safe_ids   = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    store    = get_store(request)
+    safe_ids = [x.strip() for x in ids.split(",") if 0 < len(x.strip()) <= 50]
     if not safe_ids:
         return {}
-    return store.student_weekly_rates(safe_ids)
+    return store.entity_weekly_rates(safe_ids)

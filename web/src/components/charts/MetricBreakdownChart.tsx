@@ -2,11 +2,20 @@ import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recha
 import { StatusCount } from '../../types'
 
 interface Props {
-  data:    StatusCount[]
-  loading: boolean
+  data:               StatusCount[]
+  loading:            boolean
+  selectedThreshold?: 'above' | 'below'
+  onSelect?:          (t: 'above' | 'below') => void
 }
 
-export default function StatusDonutChart({ data, loading }: Props) {
+function nameToThreshold(name: string): 'above' | 'below' | null {
+  const n = name.toLowerCase()
+  if (n.includes('above')) return 'above'
+  if (n.includes('below')) return 'below'
+  return null
+}
+
+export default function MetricBreakdownChart({ data, loading, selectedThreshold, onSelect }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48">
@@ -28,10 +37,17 @@ export default function StatusDonutChart({ data, loading }: Props) {
           innerRadius="52%"
           outerRadius="78%"
           paddingAngle={2}
+          cursor={onSelect ? 'pointer' : 'default'}
+          onClick={(entry) => {
+            const t = nameToThreshold(entry.name ?? '')
+            if (t && onSelect) onSelect(t)
+          }}
         >
-          {data.map((entry, i) => (
-            <Cell key={i} fill={entry.color} />
-          ))}
+          {data.map((entry, i) => {
+            const t = nameToThreshold(entry.name)
+            const dimmed = selectedThreshold !== undefined && t !== selectedThreshold
+            return <Cell key={i} fill={entry.color} fillOpacity={dimmed ? 0.25 : 1} />
+          })}
         </Pie>
         <Tooltip
           formatter={(v, n) => [(typeof v === 'number' ? v : 0).toLocaleString(), String(n ?? '')]}

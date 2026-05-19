@@ -32,7 +32,7 @@ export default function Login() {
 
         <div className="text-center mb-10">
           <p className="text-xs text-pewter uppercase tracking-widest mb-3">Excelsis 360</p>
-          <h1 className="text-2xl font-semibold text-carbon tracking-tight">Attendance Analyst</h1>
+          <h1 className="text-2xl font-semibold text-carbon tracking-tight">Data Analyst</h1>
         </div>
 
         <form onSubmit={submit} className="space-y-4">

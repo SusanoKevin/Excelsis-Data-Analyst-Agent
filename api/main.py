@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import os
+import threading
 import urllib.request
 from contextlib import asynccontextmanager
 
@@ -17,12 +19,14 @@ from api.routers.auth import router as auth_router
 from api.routers.chat import router as chat_router
 from api.routers.data import router as data_router
 from src.agent import ExcelsisAgent
-from src.sql_store import SQLAttendanceStore
+from src.rag_ingestor import run_ingestion
+from src.rag_store import ExcelsisRAGStore
+from src.sql_store import SQLDataStore
 
 logger = logging.getLogger(__name__)
 
 
-def _validate_startup(store: SQLAttendanceStore) -> None:
+def _validate_startup(store: SQLDataStore) -> None:
     model  = os.environ.get("MODEL", "phi4:14b")
     server = os.environ.get("SQL_SERVER", "<not set>")
     dbs    = os.environ.get("SQL_DATABASES", store._primary_db)
@@ -41,24 +45,33 @@ def _validate_startup(store: SQLAttendanceStore) -> None:
     except Exception as e:
         logger.error("SQL Server check failed: %s", e)
 
-    ok = lambda b: "OK" if b else "UNREACHABLE"
-    print(
-        f"\n{'─' * 52}\n"
-        f"  Excelsis 360 — startup\n"
-        f"  Model:      {model:<24} {ok(ollama_ok)}\n"
-        f"  SQL Server: {server:<24} {ok(sql_ok)}\n"
-        f"  Databases:  {dbs}\n"
-        f"{'─' * 52}\n"
-    )
+    logger.info("Excelsis 360 startup | model=%s (%s) | sql=%s (%s) | dbs=%s",
+                model, "OK" if ollama_ok else "UNREACHABLE",
+                server, "OK" if sql_ok else "UNREACHABLE",
+                dbs)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_default_admin()
-    store = SQLAttendanceStore()
-    app.state.store = store
-    app.state.agent = ExcelsisAgent(store=store)
-    _validate_startup(store)
+    store = SQLDataStore()
+    rag_store = ExcelsisRAGStore(
+        chroma_path=os.getenv("CHROMA_PATH", ".chroma"),
+        embed_model=os.getenv("EMBED_MODEL", "nomic-embed-text"),
+    )
+    app.state.store     = store
+    app.state.rag_store = rag_store
+    app.state.agent     = ExcelsisAgent(store=store, rag_store=rag_store)
+
+    docs_path = os.getenv("DOCS_PATH", "docs")
+    threading.Thread(
+        target=run_ingestion,
+        args=(rag_store, store, docs_path),
+        daemon=True,
+        name="rag-ingestor",
+    ).start()
+
+    await asyncio.to_thread(_validate_startup, store)
     yield
 
 

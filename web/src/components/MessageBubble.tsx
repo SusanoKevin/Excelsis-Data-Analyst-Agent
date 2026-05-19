@@ -1,20 +1,20 @@
 import { DashboardFilterEvent, Message } from '../types'
 
 const TOOL_LABELS: Record<string, string> = {
-  query_attendance:      'Attendance data',
-  get_at_risk_students:  'At-risk list',
+  query_data:            'Querying data…',
+  get_threshold_alerts:  'Finding threshold alerts…',
   get_summary:           'Summary',
   update_dashboard_view: 'Dashboard filter',
   run_sql_query:         'SQL query',
   compare_periods:       'Period comparison',
-  compare_classes:       'Class comparison',
+  compare_segments:      'Comparing segments…',
 }
 
 function buildDashboardUrl(f: DashboardFilterEvent): string {
   const params = new URLSearchParams()
   if (f.classes.length > 0) params.set('classes', f.classes.join(','))
   if (f.period !== 'all') params.set('period', f.period)
-  if (f.view === 'class') params.set('view', f.view)
+  if (f.view === 'group') params.set('view', f.view)
   const qs = params.toString()
   return `/dashboard${qs ? `?${qs}` : ''}`
 }

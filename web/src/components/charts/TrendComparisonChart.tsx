@@ -3,6 +3,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -11,12 +12,14 @@ import {
 import { WeeklyStat } from '../../types'
 
 interface Props {
-  current:  WeeklyStat[]
-  previous: WeeklyStat[]
-  loading:  boolean
+  current:       WeeklyStat[]
+  previous:      WeeklyStat[]
+  loading:       boolean
+  selectedWeek?: string
+  onSelect?:     (week: string) => void
 }
 
-export default function TrendComparisonChart({ current, previous, loading }: Props) {
+export default function TrendComparisonChart({ current, previous, loading, selectedWeek, onSelect }: Props) {
   if (loading) return <div className="h-48 animate-pulse bg-arctic-mist/50 rounded" />
 
   const allWeeks = Array.from(
@@ -25,8 +28,8 @@ export default function TrendComparisonChart({ current, previous, loading }: Pro
 
   const chartData = allWeeks.map((week) => ({
     week,
-    current:  current.find((r)  => r.week === week)?.attendance_rate ?? null,
-    previous: previous.find((r) => r.week === week)?.attendance_rate ?? null,
+    current:  current.find((r)  => r.week === week)?.metric_rate ?? null,
+    previous: previous.find((r) => r.week === week)?.metric_rate ?? null,
   }))
 
   if (chartData.length === 0) {
@@ -41,6 +44,10 @@ export default function TrendComparisonChart({ current, previous, loading }: Pro
         <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} unit="%" />
         <Tooltip formatter={(v: unknown) => v !== null ? `${v}%` : '—'} />
         <Legend />
+        {selectedWeek && (
+          <ReferenceLine x={selectedWeek} stroke="#007aff" strokeDasharray="3 3"
+            label={{ value: '▼', fill: '#007aff', fontSize: 10, position: 'top' }} />
+        )}
         <Line
           type="monotone"
           dataKey="current"
@@ -49,6 +56,8 @@ export default function TrendComparisonChart({ current, previous, loading }: Pro
           dot={false}
           strokeWidth={2}
           connectNulls
+          activeDot={{ r: 5, cursor: onSelect ? 'pointer' : 'default',
+            onClick: (_: unknown, payload: any) => onSelect?.(payload?.activePayload?.[0]?.payload?.week) }}
         />
         <Line
           type="monotone"

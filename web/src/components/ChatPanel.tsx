@@ -1,12 +1,12 @@
 import { KeyboardEvent, useEffect, useRef, useState } from 'react'
 import MessageBubble from './MessageBubble'
-import { AtRiskStudent, AttendanceSummary, DashboardFilterEvent } from '../types'
+import { AlertItem, DataSummary, DashboardFilterEvent } from '../types'
 import { buildSuggestions } from '../lib/suggestions'
 import { useChat } from '../lib/useChat'
 
 interface Props {
-  atRisk:              AtRiskStudent[]
-  summary:             AttendanceSummary | null
+  atRisk:              AlertItem[]
+  summary:             DataSummary | null
   onClose:             () => void
   onDashboardFilter?:  (f: DashboardFilterEvent) => void
 }
@@ -38,7 +38,7 @@ export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter 
       <div className="px-4 py-3 border-b border-arctic-mist flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold text-carbon">Ask Excelsis</p>
-          <p className="text-xs text-pewter mt-0.5">AI attendance analyst</p>
+          <p className="text-xs text-pewter mt-0.5">AI data analyst</p>
         </div>
         <div className="flex items-center gap-2">
           {messages.length > 0 && (
@@ -93,7 +93,7 @@ export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter 
             onKeyDown={onKey}
             disabled={streaming}
             rows={1}
-            placeholder="Ask about attendance…"
+            placeholder="Ask anything about your data…"
             className="flex-1 bg-transparent text-sm text-carbon placeholder-pewter resize-none focus:outline-none max-h-28"
             style={{ lineHeight: '1.5' }}
           />

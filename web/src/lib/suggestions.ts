@@ -1,23 +1,23 @@
-import { AtRiskStudent, AttendanceSummary } from '../types'
+import { AlertItem, DataSummary } from '../types'
 
 export function buildSuggestions(
-  atRisk: AtRiskStudent[],
-  summary: AttendanceSummary | null,
+  atRisk: AlertItem[],
+  summary: DataSummary | null,
 ): string[] {
   const out: string[] = []
 
   if (atRisk.length > 0) {
     const worst = atRisk[0]
-    const name = worst.name ?? `Student #${worst.student_id}`
-    out.push(`Why is ${name} flagged as at risk?`)
+    const name = worst.label ?? `Entity #${worst.entity_id}`
+    out.push(`Why is ${name} below the threshold?`)
   }
 
-  if ((summary?.classes?.length ?? 0) > 0) {
-    out.push('Which class has the lowest attendance this month?')
+  if ((summary?.dimensions?.length ?? 0) > 0) {
+    out.push('Which segment has the lowest metric rate this month?')
   }
 
-  out.push('Show me the weekly attendance trend')
-  out.push('What are the best intervention strategies for chronic absenteeism?')
+  out.push('Show me entities below the threshold')
+  out.push('Compare this month vs last month')
 
   return out.slice(0, 4)
 }

@@ -15,9 +15,10 @@ logger = logging.getLogger(__name__)
 
 from src.security import UserContext
 
-SECRET_KEY = os.getenv("JWT_SECRET", "change-me-in-production")
-ALGORITHM  = "HS256"
+SECRET_KEY      = os.getenv("JWT_SECRET", "change-me-in-production")
+ALGORITHM       = "HS256"
 TOKEN_TTL_HOURS = 24
+ADMIN_USERNAME  = "admin"
 
 USERS_FILE = Path(__file__).parent / "users.json"
 
@@ -33,7 +34,11 @@ def _verify(password: str, hashed: str) -> bool:
 def _load() -> dict:
     if not USERS_FILE.exists():
         return {}
-    return json.loads(USERS_FILE.read_text())
+    try:
+        return json.loads(USERS_FILE.read_text())
+    except json.JSONDecodeError:
+        logger.error("users.json is malformed — returning empty user store")
+        return {}
 
 
 def _save(users: dict) -> None:
@@ -45,11 +50,13 @@ def _save(users: dict) -> None:
 def ensure_default_admin() -> None:
     with _lock:
         users = _load()
-        if "admin" not in users:
+        if ADMIN_USERNAME not in users:
             password = os.getenv("ADMIN_PASSWORD", "admin123")
-            users["admin"] = {"hashed_password": _hash(password)}
+            if password == "admin123":
+                logger.warning("SECURITY: Admin password is the default 'admin123' — set ADMIN_PASSWORD in .env")
+            users[ADMIN_USERNAME] = {"hashed_password": _hash(password)}
             _save(users)
-            logger.info("Created default admin user (set ADMIN_PASSWORD in .env to change)")
+            logger.info("Created default admin user")
 
 
 def authenticate_user(username: str, password: str) -> UserContext | None:
@@ -96,7 +103,7 @@ def create_user(username: str, password: str) -> bool:
 def delete_user(username: str) -> bool:
     with _lock:
         users = _load()
-        if username not in users or username == "admin":
+        if username not in users or username == ADMIN_USERNAME:
             return False
         del users[username]
         _save(users)

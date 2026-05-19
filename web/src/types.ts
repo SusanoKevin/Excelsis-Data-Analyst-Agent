@@ -6,7 +6,7 @@ export interface AuthUser {
 // ── Dashboard filter / drill state ────────────────────────────────────────────
 
 export type DashboardPeriod = 'all' | 'last_7_days' | 'last_30_days' | 'custom'
-export type DrillLevel      = 'overview' | 'class' | 'student'
+export type DrillLevel      = 'overview' | 'group' | 'entity'
 
 export interface DashboardFilter {
   classes:    string[]
@@ -23,31 +23,25 @@ export interface DashboardFilterEvent {
 
 // ── Chart data row shapes ─────────────────────────────────────────────────────
 
-export interface ClassStat {
-  class:           string
-  total:           number
-  present:         number
-  absent:          number
-  late:            number
-  attendance_rate: number
+export interface GroupStat {
+  class:          string
+  total:          number
+  positive_count: number
+  metric_rate:    number
 }
 
 export interface WeeklyStat {
-  week:            string
-  total:           number
-  present:         number
-  absent:          number
-  late:            number
-  attendance_rate: number
+  week:           string
+  total:          number
+  positive_count: number
+  metric_rate:    number
 }
 
-export interface DayOfWeekStat {
-  day_of_week:     string
-  total:           number
-  present:         number
-  absent:          number
-  late:            number
-  attendance_rate: number
+export interface DimensionStat {
+  day_of_week:    string
+  total:          number
+  positive_count: number
+  metric_rate:    number
 }
 
 export interface StatusCount {
@@ -68,28 +62,25 @@ export interface Message {
 
 // ── API response shapes ───────────────────────────────────────────────────────
 
-export interface AttendanceSummary {
-  total_records:           number
-  unique_students:         number
-  date_range:              { from: string; to: string }
-  overall_attendance_rate: number
-  total_absences:          number
-  classes:                 string[]
+export interface DataSummary {
+  total_records:         number
+  entity_count:          number
+  date_range:            { from: string; to: string }
+  metric_rate:           number
+  below_threshold_count: number
+  dimensions:            string[]
 }
 
 export interface StatsRow {
   [key: string]: string | number
-  attendance_rate: number
+  metric_rate: number
 }
 
-export interface AtRiskStudent {
-  student_id:      number
-  name?:           string
-  cls?:            string
-  total:           number
-  present:         number
-  absent:          number
-  late:            number
-  attendance_rate: number
+export interface AlertItem {
+  entity_id:      number
+  label?:         string
+  group_name?:    string
+  total:          number
+  positive_count: number
+  metric_rate:    number
 }
-

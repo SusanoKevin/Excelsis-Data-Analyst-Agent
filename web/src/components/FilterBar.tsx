@@ -43,7 +43,7 @@ export default function FilterBar({ filter, classes, onChange }: Props) {
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-[10px] border border-arctic-mist bg-fog text-carbon hover:border-pewter transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-link-blue"
         >
-          {filter.classes.length === 0 ? 'All classes' : filter.classes.join(', ')}
+          {filter.classes.length === 0 ? 'All segments' : filter.classes.join(', ')}
           <svg width="10" height="6" viewBox="0 0 10 6" fill="none" className={`flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}>
             <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>

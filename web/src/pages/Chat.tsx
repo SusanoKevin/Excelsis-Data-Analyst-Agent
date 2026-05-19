@@ -2,20 +2,20 @@ import { KeyboardEvent, useEffect, useRef, useState } from 'react'
 import Sidebar from '../components/Sidebar'
 import MessageBubble from '../components/MessageBubble'
 import api from '../api/client'
-import { AtRiskStudent, AttendanceSummary } from '../types'
+import { AlertItem, DataSummary } from '../types'
 import { buildSuggestions } from '../lib/suggestions'
 import { useChat } from '../lib/useChat'
 
 export default function Chat() {
   const { messages, streaming, send, clearHistory } = useChat()
   const [input, setInput]     = useState('')
-  const [atRisk, setAtRisk]   = useState<AtRiskStudent[]>([])
-  const [summary, setSummary] = useState<AttendanceSummary | null>(null)
+  const [atRisk, setAtRisk]   = useState<AlertItem[]>([])
+  const [summary, setSummary] = useState<DataSummary | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     api.get('/data/summary').then((r) => setSummary(r.data)).catch(() => {})
-    api.get('/data/at-risk').then((r) => setAtRisk(r.data)).catch(() => {})
+    api.get('/data/alerts').then((r) => setAtRisk(r.data)).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -92,7 +92,7 @@ export default function Chat() {
               onKeyDown={onKey}
               disabled={streaming}
               rows={1}
-              placeholder="Ask about attendance…"
+              placeholder="Ask anything about your data…"
               className="flex-1 bg-transparent text-sm text-carbon placeholder-pewter resize-none focus:outline-none max-h-32"
               style={{ lineHeight: '1.5' }}
             />

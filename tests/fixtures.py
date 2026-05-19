@@ -37,6 +37,8 @@ class _TTLCache:
 
 
 class AttendanceDataStore:
+    """In-memory pandas-backed store used exclusively as a test fixture."""
+
     def __init__(self, data_path: str | None = None) -> None:
         self._datasets: dict[str, dict] = {}
         self._cache = _TTLCache(ttl=300)
@@ -68,9 +70,9 @@ class AttendanceDataStore:
         did = str(uuid.uuid4())
         df = df.copy()
         df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
-        df["date"]   = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
-        df["status"] = df["status"].str.strip().str.lower()
-        df = df[df["status"].isin(VALID_STATUSES)].copy()
+        df["date"]        = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
+        df["status"]      = df["status"].str.strip().str.lower()
+        df                = df[df["status"].isin(VALID_STATUSES)].copy()
         df["is_present"]  = df["status"] == "present"
         df["is_absent"]   = df["status"] == "absent"
         df["is_late"]     = df["status"] == "late"
@@ -87,7 +89,7 @@ class AttendanceDataStore:
             return pd.DataFrame()
         return pd.concat([v["df"] for v in self._datasets.values()], ignore_index=True)
 
-    def get_at_risk(
+    def get_threshold_alerts(
         self,
         threshold: float = 75.0,
         classes=None,
@@ -148,7 +150,6 @@ class AttendanceDataStore:
             if df.empty:
                 return pd.DataFrame()
 
-        # Apply date range filter (explicit dates take precedence over period)
         if date_from or date_to:
             if date_from:
                 df = df[df["date"] >= pd.to_datetime(date_from)]
@@ -195,7 +196,7 @@ class AttendanceDataStore:
         grp["rate"] = (grp["present"] / grp["total"] * 100).round(1)
         pivot = grp.pivot(index="student_id", columns="week", values="rate").reindex(columns=all_weeks)
         return {
-            int(sid): [None if pd.isna(v) else float(v) for v in pivot.loc[sid]]
+            sid: [None if pd.isna(v) else float(v) for v in pivot.loc[sid]]
             if sid in pivot.index else [None] * len(all_weeks)
             for sid in student_ids
         }
@@ -205,13 +206,13 @@ class AttendanceDataStore:
         if df.empty:
             return {"status": "no_data"}
         return {
-            "total_records":           len(df),
-            "unique_students":         int(df["student_id"].nunique()),
+            "total_records":         len(df),
+            "entity_count":          int(df["student_id"].nunique()),
             "date_range": {
                 "from": str(df["date"].min().date()),
                 "to":   str(df["date"].max().date()),
             },
-            "overall_attendance_rate": round(float(df["is_present"].mean() * 100), 1),
-            "total_absences":          int(df["is_absent"].sum()),
-            "classes":                 df["class"].unique().tolist() if "class" in df.columns else [],
+            "metric_rate":           round(float(df["is_present"].mean() * 100), 1),
+            "below_threshold_count": int((~df["is_present"]).sum()),
+            "dimensions":            df["class"].unique().tolist() if "class" in df.columns else [],
         }
