@@ -1,20 +1,22 @@
-# Excelsis 360 — Attendance Analyst Agent
+# Excelsis 360 — Data Analyst Agent
 
-AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama local LLMs), SQL Server data backend, and a FastAPI + React full-stack web interface.
+AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct agent (Ollama local LLMs), SQL Server data backend, and a FastAPI + React full-stack web interface.
 
 ---
 
 ## Features
 
-- **Natural-language chat** — ask questions about attendance in plain English; the analysis model reasons across multiple tools and streams the answer token-by-token
+- **Natural-language chat** — ask questions about Excelsis360 data in plain English; the analysis model reasons across multiple tools and streams the answer token-by-token
 - **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, ad-hoc SQL) and in what order
-- **Single-model setup** — `phi4:14b` handles both data analysis/tool calling and conversational replies via a unified Ollama pipeline
+- **RAG knowledge base** — ChromaDB vector store (`nomic-embed-text` embeddings via Ollama) indexes SQL schema metadata and policy documents; the agent uses `retrieve_schema` and `retrieve_policy` for accurate, grounded answers
+- **Two-model setup** — `phi4:14b` handles reasoning and tool calling; `nomic-embed-text` handles vector encoding for the RAG layer; both run fully locally via Ollama
 - **SQL Server backend** — connects to one or more SQL Server databases; the agent can run ad-hoc T-SQL SELECT queries alongside structured tools
 - **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
 - **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, at-risk student table, and user management
 - **REST API** — FastAPI backend with JWT auth, SSE streaming, file upload, and dashboard generation
+- **Rate limiting** — 10 requests/minute per IP on all chat and data endpoints (slowapi)
 - **Jupyter notebook** — full interactive analysis environment that shares the same `src/` backend
-- **MCP server** — exposes attendance analysis tools to Claude Code
+- **MCP server** — exposes Excelsis360 data tools to Claude Code
 
 ---
 
@@ -30,6 +32,9 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 | Frontend | React 18 + Vite + Tailwind CSS |
 | Data | pandas, supports CSV / Excel / Parquet |
 | Dashboards | Plotly (interactive HTML) + matplotlib/seaborn (PNG) |
+| Vector DB | ChromaDB (persistent) |
+| Embeddings | `nomic-embed-text` via Ollama |
+| Rate limiter | slowapi |
 
 ---
 
@@ -45,18 +50,18 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 │   └── routers/
 │       ├── auth.py       # Login, user CRUD
 │       ├── chat.py       # SSE streaming chat endpoint
-│       ├── data.py       # Attendance stats, at-risk, file upload
-│       └── dashboard.py  # Dashboard generation
+│       └── data.py       # Data stats, at-risk, trends, sparklines
 │
 ├── src/                  # Shared Python backend (used by API + notebook)
 │   ├── security.py       # UserContext dataclass (user_id)
-│   ├── sql_store.py      # SQLAttendanceStore — primary data backend (SQL Server via pyodbc)
-│   ├── data_store.py     # AttendanceDataStore — file-based store (CSV/Excel/Parquet, notebook use)
-│   ├── sql_store.py      # AttendanceSQLStore (SQL Server via pyodbc)
-│   ├── tools.py          # LangGraph tools (5 tools, all security-aware)
+│   ├── sql_store.py      # SQLDataStore — primary data backend (SQL Server via pyodbc)
+│   ├── tools.py          # LangGraph tools (13 tools, all security-aware)
+│   ├── rag_store.py      # ChromaDB collections for schema and policy vector search
+│   ├── rag_ingestor.py   # Ingests PDFs/Markdown from docs/ + auto-indexes SQL schema
 │   ├── agent.py          # ExcelsisAgent — LangGraph ReAct agent (phi4:14b)
-│   ├── dashboard.py      # Dashboard builder (matplotlib/seaborn)
 │   └── mcp_server.py     # FastMCP server for Claude Code
+│
+├── docs/                 # Policy documents scanned by rag_ingestor.py (.pdf and .md)
 │
 ├── web/                  # React frontend
 │   └── src/
@@ -66,7 +71,7 @@ AI-powered attendance analysis system built on a LangGraph ReAct agent (Ollama l
 │
 ├── Excelsis.ipynb        # Interactive Jupyter notebook
 ├── start.sh              # Start both servers (backend :8000, frontend :5173)
-├── requirements.txt      # Python dependencies
+├── requirements.lock     # Pinned Python dependencies (use this for installs)
 └── .env.example          # Environment variable template
 ```
 
@@ -80,6 +85,7 @@ Download Ollama from [ollama.com](https://ollama.com) and pull the required mode
 
 ```bash
 ollama pull phi4:14b
+ollama pull nomic-embed-text
 ```
 
 Ollama must be running on `http://localhost:11434` before starting the app.
@@ -102,10 +108,10 @@ ADMIN_PASSWORD=your-admin-password
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock
 ```
 
-> Ollama model weights are downloaded on first `ollama pull`. Subsequent starts are instant.
+> Ollama model weights are downloaded on first `ollama pull`. Subsequent starts are instant. `nomic-embed-text` is required for the RAG knowledge base; `phi4:14b` drives the ReAct agent.
 
 ### 4. Install frontend dependencies
 
@@ -145,6 +151,16 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 | `AT_RISK_THRESHOLD` | No | `75.0` | Default attendance % threshold for at-risk flagging |
 | `JWT_SECRET` | Yes (prod) | `change-me-in-production` | Secret key for JWT signing |
 | `ADMIN_PASSWORD` | No | `admin123` | Password for the default admin account |
+| `PRIMARY_TABLE` | No | `attendance` | Primary SQL table the agent queries |
+| `METRIC_COLUMN` | No | `status` | Column holding the measured metric |
+| `POSITIVE_VALUE` | No | `present` | Value counted as a positive outcome |
+| `DATE_COLUMN` | No | `date` | Date column for time-based queries |
+| `ENTITY_COLUMN` | No | `student_id` | Primary entity key column |
+| `ENTITY_NAME_COLUMN` | No | `student_name` | Human-readable entity name column |
+| `GROUP_COLUMNS` | No | `class,grade` | Comma-separated grouping columns |
+| `CHROMA_PATH` | No | `.chroma` | Persistent ChromaDB directory path |
+| `EMBED_MODEL` | No | `nomic-embed-text` | Ollama embedding model for RAG |
+| `DOCS_PATH` | No | `docs` | Directory scanned for policy documents |
 
 ---
 
@@ -190,9 +206,10 @@ The FastAPI backend is available at `http://localhost:8000`. Interactive docs at
 | POST | `/auth/users` | Admin | Create user |
 | DELETE | `/auth/users/{username}` | Admin | Delete user |
 | POST | `/chat/stream` | Any | SSE streaming chat |
-| GET | `/data/summary` | Any | Attendance overview |
+| GET | `/data/summary` | Any | Data overview |
 | GET | `/data/at-risk` | Counselor+ | At-risk student list |
 | GET | `/data/stats` | Any | Stats by group/period |
+| GET | `/data/trends` | Any | Period comparison: last 30 days vs prior 30 days |
 | GET | `/data/sparklines` | Any | Sparkline trend data |
 | GET | `/health` | None | Liveness check |
 
@@ -217,10 +234,10 @@ CURRENT_USER = UserContext(user_id="ms_johnson")
 
 ---
 
-## Attendance Data
+## Data
 
-Attendance data is read directly from SQL Server. Configure the connection in `.env` (see [Environment Variables](#environment-variables)).
+Data is read directly from SQL Server. Configure the connection in `.env` (see [Environment Variables](#environment-variables)).
 
-The agent can query any database listed in `SQL_DATABASES`. Expected schema: a table with at minimum `student_id`, `date`, and `status` columns (`present` / `absent` / `late` / `excused`). The agent will adapt its T-SQL to whatever schema it finds via `run_sql_query`.
+The agent can query any database listed in `SQL_DATABASES`. The agent will adapt its T-SQL to whatever schema it finds via `run_sql_query`.
 
 ---
