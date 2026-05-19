@@ -243,7 +243,7 @@ def build():
         ("4", "Technology Stack", "Every library and tool used and why"),
         ("5", "Data Backend — SQLDataStore", "SQL Server integration, caching, and SQL safety"),
         ("6", "AI Agent — ExcelsisAgent", "LangGraph ReAct loop, tools, and streaming"),
-        ("7", "Agent Tools", "All 7 tools exposed to the LLM"),
+        ("7", "Agent Tools", "All 13 tools exposed to the LLM"),
         ("8", "REST API", "FastAPI endpoints, auth, rate limiting, and SSE"),
         ("9", "Authentication & User Management", "JWT, bcrypt, and users.json"),
         ("10", "React Web Interface", "Pages, components, and the design system"),
@@ -270,19 +270,19 @@ def build():
     story += chapter("1. Project Overview")
 
     story.append(body(
-        "The Excelsis 360 Analyst Agent is an AI-powered attendance analysis tool built for the Excelsis 360 "
+        "The Excelsis 360 Data Analyst Agent is a full-stack AI analyst built for the Excelsis 360 "
         "platform. It extends the platform's existing data infrastructure with a reasoning AI layer — "
-        "combining a locally-hosted large language model (LLM), direct access to Excelsis 360's SQL Server "
-        "attendance data, and a dedicated web interface — to give school staff a conversational way to "
-        "interrogate attendance records without writing reports or navigating complex dashboards."
+        "combining a locally-hosted LLM (phi4:14b via Ollama), direct access to SQL Server data, a "
+        "ChromaDB RAG layer for schema and policy retrieval, and a dedicated web interface — to give "
+        "staff a conversational way to interrogate data without writing reports or navigating dashboards."
     ))
     story.append(sp())
     story.append(body(
-        "Where the Excelsis 360 platform manages attendance records and surfaces pre-built reports, the "
-        "Analyst Agent sits on top of that data and answers questions in plain English. A teacher can ask "
-        "\"which students in 10A are at risk this month?\" and the agent reasons across the data, selects "
-        "the right query strategy, and streams back a specific, cited answer — without any hard-coded "
-        "report logic and without the user needing to know SQL or navigate pivot tables."
+        "The Analyst Agent sits on top of the platform's SQL data and answers questions in plain English. "
+        "A user can ask \"which groups are at risk this month?\" and the agent reasons across the data, "
+        "selects the right tools, and streams back a specific, grounded answer. When schema or policy "
+        "questions arise, the agent retrieves accurate answers from a vector knowledge base rather than "
+        "relying on the model's training data. No hard-coded report logic; no SQL required."
     ))
     story.append(sp())
 
@@ -305,7 +305,8 @@ def build():
         ["Live dashboard", "Interactive charts: class attendance, weekly trend, status donut, day-of-week bar, trend comparison"],
         ["Agent ↔ dashboard link", "Asking the agent to show a chart updates the dashboard in real time (SSE event)"],
         ["User management", "Admin-controlled user accounts with bcrypt-hashed passwords and JWT tokens"],
-        ["MCP server", "Exposes attendance tools directly to Claude Code via the Model Context Protocol"],
+        ["RAG knowledge base", "ChromaDB vector store (nomic-embed-text embeddings) indexes SQL schema metadata and policy documents; agent calls retrieve_schema and retrieve_policy for grounded answers"],
+        ["MCP server", "Gives a model direct access to Excelsis 360 data via FastMCP stdio: ask_analyst routes through the full ReAct loop; five direct-data tools bypass the agent"],
         ["Jupyter notebook", "Full interactive analysis environment sharing the same Python backend"],
         ["Rate limiting", "Chat endpoint limited to 10 requests per minute per IP via SlowAPI"],
     ]
@@ -390,21 +391,22 @@ def build():
         ),
         (
             "2.7  Policy Knowledge",
-            "A teacher asks about best-practice intervention strategies for chronic absenteeism.",
+            "A user asks about thresholds, exemption rules, or intervention procedures documented in school policy.",
             [
-                "The agent answers conversationally from its training knowledge without calling any tools.",
-                "Responses include evidence-based approaches such as early warning systems, family engagement, and attendance contracts.",
-                "This requires no data and demonstrates the dual role of the model: data analyst and domain expert.",
+                "The agent calls retrieve_policy with the user's question as the query.",
+                "The RAG layer searches the ChromaDB policy collection (indexed from docs/*.md and docs/*.pdf).",
+                "The top matching policy excerpts are returned and injected into the agent's context.",
+                "The agent synthesises a grounded answer citing the actual policy text rather than guessing from training data.",
             ]
         ),
         (
-            "2.8  Claude Code Integration (MCP)",
-            "A developer or power user wants to query attendance data directly from Claude Code.",
+            "2.8  Model Context Protocol (MCP)",
+            "A model or developer wants to query Excelsis 360 data directly via the MCP server.",
             [
                 "Start the MCP server: python -m src.mcp_server",
-                "Configure Claude Code to connect to the stdio server.",
-                "Claude Code can now call ask_analyst, attendance_summary, at_risk_students, and class_statistics as tools.",
-                "This enables attendance analysis within AI-assisted development workflows.",
+                "The model can call ask_analyst to route a natural-language question through the full ReAct loop.",
+                "Or call direct-data tools: data_summary, threshold_alerts, group_statistics, schema_lookup, knowledge_lookup.",
+                "Direct tools return raw results the model can reason about without the agent layer.",
             ]
         ),
     ]
@@ -435,7 +437,7 @@ def build():
         ["3. API Gateway", "FastAPI", "Python / Uvicorn", "JWT validation, rate limiting, request routing"],
         ["4. Agent", "ExcelsisAgent", "LangGraph ReAct", "Maintains conversation history, streams LLM events"],
         ["5. LLM", "phi4:14b", "Ollama / ChatOllama", "Reasons about which tools to call and in what order"],
-        ["6. Tools", "7 LangGraph tools", "Python functions", "Execute SQL queries and compute statistics"],
+        ["6. Tools", "13 LangGraph tools", "Python functions", "SQL queries, stats, RAG retrieval, anomaly detection, trend analysis"],
         ["7. Data Store", "SQLDataStore", "pyodbc / SQL Server", "Read-only T-SQL queries with TTL cache"],
         ["8. Database", "SQL Server", "ODBC Driver 18", "Primary attendance table + optional extra databases"],
     ]
@@ -451,7 +453,7 @@ def build():
 """Browser (React :5173)
   │
   │  POST /chat/stream  (Bearer JWT)
-  │  GET  /data/summary, /data/at-risk, /data/stats …
+  │  GET  /data/summary, /data/alerts, /data/stats, /data/trends …
   ▼
 FastAPI (:8000)
   ├── /auth/*        JWT sign/verify, user CRUD
@@ -461,21 +463,27 @@ FastAPI (:8000)
 ExcelsisAgent  (LangGraph ReAct)
   ├── ChatOllama ─── phi4:14b @ http://localhost:11434
   ├── Conversation history (last 10 turns)
-  └── 7 tools ──────────────────────────────────────────────────────────┐
+  └── 13 tools ─────────────────────────────────────────────────────────┐
                                                                         │
-SQLDataStore (read-only)                           Tools          │
+SQLDataStore (read-only)                          Tools (SQL)    │
   ├── _assert_select_only()  ← sqlglot AST guard         ◄─────────────┘
-  ├── _TTLCache (5-min TTL)
-  └── pyodbc ─── SQL Server
-        ├── primary_db  (attendance table)
+  ├── _TTLCache (5-min TTL)                                             │
+  └── pyodbc ─── SQL Server                       Tools (RAG)    │
+        ├── primary_db  (configurable schema)             ◄────────────┘
         └── extra_db_1, extra_db_2, …  (allowlisted)
+                                                                        │
+ExcelsisRAGStore (ChromaDB)                                            │
+  ├── excelsis_schema  ← SQL INFORMATION_SCHEMA (auto-indexed)         │
+  └── excelsis_policy  ← docs/*.pdf + docs/*.md (background ingestor)  │
 
 MCP Server (stdio)
-  └── FastMCP ─── ExcelsisAgent + SQLDataStore
-        ├── ask_analyst()
-        ├── attendance_summary()
-        ├── at_risk_students()
-        └── class_statistics()
+  └── FastMCP ─── ExcelsisAgent + SQLDataStore + ExcelsisRAGStore
+        ├── ask_analyst()        ← full ReAct loop
+        ├── data_summary()
+        ├── threshold_alerts()
+        ├── group_statistics()
+        ├── schema_lookup()
+        └── knowledge_lookup()
 """
     ))
 
@@ -520,7 +528,9 @@ MCP Server (stdio)
         ["python-jose", "python-jose", "JWT", "HS256 token signing and verification; 24-hour token TTL"],
         ["bcrypt", "bcrypt", "Password hashing", "bcrypt with per-password salt; stored in users.json"],
         ["SlowAPI", "slowapi", "Rate limiting", "10 chat requests/minute/IP; wraps FastAPI with Redis-free in-memory limiter"],
-        ["FastMCP", "mcp", "MCP server", "stdio-based Model Context Protocol server for Claude Code tool integration"],
+        ["ChromaDB", "chromadb", "Vector store", "Persistent local vector DB for RAG; two collections: schema metadata and policy documents"],
+        ["nomic-embed-text", "Ollama (embed)", "Embeddings", "Local embedding model for RAG; pulled via Ollama; no external API needed"],
+        ["FastMCP", "mcp", "MCP server", "stdio-based Model Context Protocol server; exposes 6 tools for model-direct data access"],
         ["React 18", "react", "Frontend framework", "Component-based UI with hooks; Vite for build and HMR"],
         ["Tailwind CSS v4", "tailwindcss", "Styling", "Utility-first CSS; custom design tokens (carbon, snow, fog, pewter)"],
         ["Recharts", "recharts", "Charts", "Responsive SVG charts: bar, line, donut, area"],
@@ -547,23 +557,28 @@ MCP Server (stdio)
 
     story += section("5.1  Database Schema")
     story.append(body(
-        "The store expects a primary table named attendance in the configured primary database. "
-        "Additional databases can be queried via the database parameter of run_sql_query."
+        "The table and column names are fully configurable via environment variables — the store "
+        "is not hardcoded to any specific schema. Defaults match the original attendance schema:"
     ))
-    story.append(code_block(
-"""CREATE TABLE attendance (
-    student_id   INT           NOT NULL,
-    student_name NVARCHAR(200),
-    class        NVARCHAR(50),
-    grade        NVARCHAR(20),
-    date         DATE          NOT NULL,
-    status       VARCHAR(10)   NOT NULL   -- 'present' | 'absent' | 'late' | 'excused'
-);"""
+    env_schema = [
+        ["PRIMARY_TABLE", "attendance", "Main table the agent queries"],
+        ["METRIC_COLUMN", "status", "Column holding the measured metric"],
+        ["POSITIVE_VALUE", "present", "Value counted as a positive outcome"],
+        ["DATE_COLUMN", "date", "Date column for time-based filtering"],
+        ["ENTITY_COLUMN", "student_id", "Primary entity key"],
+        ["ENTITY_NAME_COLUMN", "student_name", "Human-readable entity label"],
+        ["GROUP_COLUMNS", "class,grade", "Comma-separated grouping dimensions"],
+    ]
+    story.append(simple_table(
+        ["Env Var", "Default", "Purpose"],
+        env_schema,
+        col_widths=[4.5*cm, 3*cm, PAGE_W - MARGIN*2 - 7.5*cm]
     ))
+    story.append(sp(6))
     story.append(body(
-        "The schema is flexible — the agent will adapt its T-SQL to whatever schema it discovers "
-        "at runtime via run_sql_query. The structured tools (query_attendance, get_at_risk_students) "
-        "assume the column names above."
+        "Additional databases can be queried via the database parameter of run_sql_query. "
+        "The agent adapts its T-SQL to whatever schema it discovers at runtime via retrieve_schema "
+        "and run_sql_query."
     ))
     story.append(sp())
 
@@ -726,61 +741,103 @@ LLM node  (phi4:14b)
     story += chapter("7. Agent Tools")
 
     story.append(body(
-        "The agent has access to 7 tools defined in src/tools.py. Each tool is a Python function "
+        "The agent has access to 13 tools defined in src/tools.py. Each tool is a Python function "
         "decorated with @tool from LangChain. The docstring is the tool description shown to the LLM. "
-        "All tools receive a RunnableConfig from LangGraph that carries the SQLDataStore instance."
+        "Tools receive a RunnableConfig carrying both the SQLDataStore and ExcelsisRAGStore instances."
     ))
     story.append(sp())
 
     tools_detail = [
         (
-            "query_attendance",
-            "Answer a natural-language question about attendance statistics.",
-            "query: str",
-            "Parses the question for group_by (class, week, month, day_of_week, student_id, grade) and period (all, last_7_days, last_30_days) keywords, then calls store.compute_stats(). Returns a formatted DataFrame string.",
-            ["\"attendance by class\"", "\"weekly trend last 30 days\"", "\"which grade has lowest rate?\""],
+            "query_data",
+            "Return metric statistics grouped by a dimension and period.",
+            "group_by: str, period: str, classes, date_from, date_to",
+            "Calls store.compute_stats(). group_by accepts class, week, month, day_of_week, student_id, grade, or any configured GROUP_COLUMNS value.",
+            ["query_data(group_by='class', period='last_30_days')"],
         ),
         (
-            "get_at_risk_students",
-            "Return students whose attendance rate is below a threshold.",
-            "threshold: float = 75.0",
-            "Calls store.get_at_risk(threshold). Returns a table of student_id, name, class, total, present, absent, late, attendance_rate ordered by rate ascending.",
-            ["get_at_risk_students(threshold=70.0)"],
+            "get_threshold_alerts",
+            "List entities whose metric rate is below a threshold.",
+            "threshold: float = 75.0, classes, date_from, date_to",
+            "Calls store.get_threshold_alerts(). Returns entity_id, label, group, and metric_rate ordered ascending.",
+            ["get_threshold_alerts(threshold=70.0)"],
         ),
         (
             "get_summary",
-            "Return a high-level overview of all attendance data.",
+            "Return a high-level overview of all data.",
             "(none)",
-            "Calls store.summary() and returns the result as a JSON string. Includes total_records, unique_students, date_range, overall_attendance_rate, total_absences, classes.",
+            "Calls store.summary(). Returns total_records, entity_count, date_range, metric_rate, and dimension list as JSON.",
             ["get_summary()"],
         ),
         (
             "update_dashboard_view",
             "Update the live dashboard to show a specific view or filter.",
             "classes: list[str], period: str, view: str",
-            "Validates and returns a JSON payload. The SSE layer in ExcelsisAgent detects this tool's output and emits a dashboard_filter event to the browser, which updates the React dashboard state without any page reload.",
-            ["update_dashboard_view(classes=[\"10A\"], view=\"class\")", "update_dashboard_view(period=\"last_30_days\", view=\"overview\")"],
+            "Returns a JSON payload; the SSE layer emits a dashboard_filter event to the browser, updating React state without a page reload.",
+            ["update_dashboard_view(classes=[\"10A\"], view=\"class\")"],
         ),
         (
             "run_sql_query",
             "Execute an ad-hoc T-SQL SELECT query.",
             "sql: str, database: str = \"\"",
-            "Passes the SQL through _assert_select_only() and the database allowlist check, then executes via store._query(). Automatically adds TOP 200 if no TOP clause is present. Returns up to 200 rows as a formatted table.",
-            ["SELECT TOP 10 class, COUNT(*) AS absences FROM attendance WHERE status='absent' GROUP BY class ORDER BY absences DESC"],
+            "Passes SQL through _assert_select_only() and the database allowlist, then executes. Auto-adds TOP 200 if absent. Returns up to 200 rows.",
+            ["SELECT TOP 10 class, COUNT(*) FROM attendance WHERE status='absent' GROUP BY class"],
         ),
         (
             "compare_periods",
-            "Compare attendance rates between two time periods.",
+            "Compare metric rates between two time periods.",
             "period_a: str, period_b: str",
-            "Calls compute_stats() twice (once per period), merges on class, and computes a delta column. Returns a side-by-side table.",
-            ["compare_periods(period_a='last_7_days', period_b='last_30_days')"],
+            "Calls compute_stats() twice, merges on group, computes a delta column. Returns a side-by-side table.",
+            ["compare_periods(period_a='last_30_days', period_b='prior_30_days')"],
         ),
         (
-            "compare_classes",
-            "Compare attendance statistics for two classes side by side.",
-            "class_a: str, class_b: str",
-            "Calls compute_stats() with classes=[class_a, class_b]. Returns a table showing total, present, absent, late, and rate for each class.",
-            ["compare_classes(class_a='10A', class_b='10B')"],
+            "compare_segments",
+            "Compare metric stats for two segment values side by side.",
+            "segment_col: str, segment_a: str, segment_b: str",
+            "Filters to each segment value and returns a comparison table.",
+            ["compare_segments(segment_col='class', segment_a='10A', segment_b='10B')"],
+        ),
+        (
+            "retrieve_schema",
+            "Vector search of database table and column metadata.",
+            "query: str",
+            "Searches the excelsis_schema ChromaDB collection (auto-indexed from INFORMATION_SCHEMA). Returns top-6 matching schema chunks. Use before writing SQL.",
+            ["retrieve_schema('primary table columns')"],
+        ),
+        (
+            "retrieve_policy",
+            "Vector search of policy and rule documents.",
+            "query: str",
+            "Searches the excelsis_policy ChromaDB collection (indexed from docs/*.pdf and docs/*.md). Returns top-4 matching policy chunks.",
+            ["retrieve_policy('threshold for probation')"],
+        ),
+        (
+            "statistical_summary",
+            "Return distribution statistics for metric rates.",
+            "group_by: str, period: str",
+            "Returns count, mean, std, min, 25th/50th/75th percentile, and max across groups.",
+            ["statistical_summary(group_by='class', period='all')"],
+        ),
+        (
+            "detect_anomalies",
+            "Identify groups whose metric rate deviates more than N standard deviations from the mean.",
+            "group_by: str, sigma_threshold: float = 2.0",
+            "Computes z-scores across groups; returns those exceeding sigma_threshold.",
+            ["detect_anomalies(group_by='class', sigma_threshold=2.0)"],
+        ),
+        (
+            "get_top_n",
+            "Return the top or bottom N groups ranked by metric rate.",
+            "n: int, group_by: str, period: str, ascending: bool",
+            "Calls compute_stats() and returns the first N rows after sorting.",
+            ["get_top_n(n=5, group_by='class', ascending=True)"],
+        ),
+        (
+            "analyze_trend",
+            "Return week-over-week trend direction and slope for each group.",
+            "group_by: str",
+            "Computes weekly rates over the last 8 weeks, fits a linear slope, and returns direction (improving/declining/stable) per group.",
+            ["analyze_trend(group_by='class')"],
         ),
     ]
 
@@ -853,7 +910,9 @@ LLM node  (phi4:14b)
     story += bullet_list([
         "ensure_default_admin() creates the admin account in users.json if it doesn't exist.",
         "SQLDataStore() is instantiated and stored on app.state.store.",
-        "ExcelsisAgent(store=store) is instantiated and stored on app.state.agent.",
+        "ExcelsisRAGStore() is instantiated (ChromaDB + nomic-embed-text via Ollama) and stored on app.state.rag_store.",
+        "ExcelsisAgent(store=store, rag_store=rag_store) is instantiated and stored on app.state.agent.",
+        "A background daemon thread runs ExcelsisRAGIngestor, which indexes docs/ and SQL INFORMATION_SCHEMA into ChromaDB.",
         "_validate_startup() checks Ollama reachability and SQL Server connectivity, printing a status table.",
     ])
     story.append(body(
@@ -1011,19 +1070,26 @@ LLM node  (phi4:14b)
     story += chapter("11. MCP Server")
 
     story.append(body(
-        "The Model Context Protocol (MCP) server exposes Excelsis 360's capabilities to AI-assisted "
-        "development tools — primarily Claude Code. It runs as a stdio-based process, meaning it "
-        "reads from stdin and writes to stdout using the MCP wire protocol. Identity is set at "
-        "process startup via the MCP_USER_ID environment variable."
+        "The MCP server gives a model direct access to Excelsis 360 data without going through the "
+        "HTTP API. It runs as a stdio-based FastMCP process. On startup it initialises SQLDataStore, "
+        "ExcelsisRAGStore, and ExcelsisAgent. Identity is fixed for the process lifetime via MCP_USER_ID."
+    ))
+    story.append(sp())
+    story.append(body(
+        "Two interaction modes are available: ask_analyst routes a question through the full LangGraph "
+        "ReAct loop (the agent picks tools, reasons, and returns a complete answer); the five direct "
+        "tools bypass the agent and return raw results the calling model can reason about itself."
     ))
     story.append(sp())
 
     story += section("11.1  Exposed Tools")
     mcp_tools = [
-        ["ask_analyst(query)", "Ask the full ExcelsisAgent a natural-language question. The agent reasons across all 7 internal tools and returns a comprehensive answer. This is the most powerful MCP tool."],
-        ["attendance_summary()", "Returns a JSON summary (record count, students, date range, overall rate, classes). Fast — no LLM involved."],
-        ["at_risk_students(threshold)", "Lists students below the given attendance threshold as a formatted table. Default threshold: 75%."],
-        ["class_statistics(group_by, period)", "Returns attendance stats grouped by class, week, month, day_of_week, student_id, or grade, for the specified period."],
+        ["ask_analyst(query)", "Routes a natural-language question through the full ReAct loop. The agent selects tools, reasons step-by-step, and returns a comprehensive answer."],
+        ["data_summary()", "JSON overview: record count, entity count, date range, overall metric rate. Fast — no LLM."],
+        ["threshold_alerts(threshold)", "Lists entities below the given metric threshold as a formatted table. Default: 75%."],
+        ["group_statistics(group_by, period)", "Metric stats grouped by a configured dimension and period. Returns raw DataFrame text."],
+        ["schema_lookup(query)", "Vector search of DB table/column metadata. Use before writing SQL to verify names and types."],
+        ["knowledge_lookup(query)", "Vector search of policy and rule documents. Use for threshold, exemption, or procedure questions."],
     ]
     story.append(simple_table(
         ["Tool Signature", "Description"],
@@ -1042,7 +1108,7 @@ python -m src.mcp_server"""
     ))
     story.append(body(
         "The server uses the same .env configuration as the web stack — SQL_SERVER, SQL_DATABASES, "
-        "SQL_USERNAME, SQL_PASSWORD, and MODEL must all be set."
+        "SQL_USERNAME, SQL_PASSWORD, MODEL, CHROMA_PATH, and EMBED_MODEL must all be set."
     ))
 
     # ════════════════════════════════════════════════════════════════════════
@@ -1113,8 +1179,18 @@ CURRENT_USER = UserContext(user_id="admin")"""
         ["JWT_SECRET", "Yes (prod)", "change-me-in-production", "Secret key for JWT signing — MUST be changed in production"],
         ["ADMIN_PASSWORD", "No", "admin123", "Initial password for the admin account (only used on first startup)"],
         ["MODEL", "No", "phi4:14b", "Ollama model name for the ReAct agent"],
-        ["AT_RISK_THRESHOLD", "No", "75.0", "Default attendance percentage threshold for at-risk flagging"],
+        ["AT_RISK_THRESHOLD", "No", "75.0", "Default metric percentage threshold for at-risk flagging"],
         ["MCP_USER_ID", "No", "mcp_user", "Username used by the MCP server process"],
+        ["PRIMARY_TABLE", "No", "attendance", "Primary SQL table the agent queries"],
+        ["METRIC_COLUMN", "No", "status", "Column holding the measured metric value"],
+        ["POSITIVE_VALUE", "No", "present", "Value counted as a positive outcome"],
+        ["DATE_COLUMN", "No", "date", "Date column for time-based filtering"],
+        ["ENTITY_COLUMN", "No", "student_id", "Primary entity key column"],
+        ["ENTITY_NAME_COLUMN", "No", "student_name", "Human-readable entity name column"],
+        ["GROUP_COLUMNS", "No", "class,grade", "Comma-separated grouping dimension columns"],
+        ["CHROMA_PATH", "No", ".chroma", "Persistent ChromaDB directory path"],
+        ["EMBED_MODEL", "No", "nomic-embed-text", "Ollama embedding model for RAG (must be pulled first)"],
+        ["DOCS_PATH", "No", "docs", "Directory scanned for policy PDFs and Markdown files"],
     ]
     story.append(simple_table(
         ["Variable", "Required", "Default", "Description"],
@@ -1172,8 +1248,9 @@ CURRENT_USER = UserContext(user_id="admin")"""
 
     story += section("15.2  First-Time Setup")
     story.append(code_block(
-"""# 1. Pull the LLM (one-time, ~8GB download)
-ollama pull phi4:14b
+"""# 1. Pull the models (one-time downloads)
+ollama pull phi4:14b          # ~8GB — ReAct agent
+ollama pull nomic-embed-text  # ~270MB — RAG embeddings
 
 # 2. Copy and configure environment
 cp .env.example .env
@@ -1247,7 +1324,7 @@ cd web && npm run dev"""
 
     story += section("16.1  Unit Tests — TestZeroKnowledge")
     story.append(body(
-        "These tests call LangGraph tools directly with a synthetic AttendanceDataStore seeded "
+        "These tests call LangGraph tools directly with a synthetic SampleDataStore seeded "
         "from a pandas DataFrame. No Ollama, no SQL Server, no network required. They run in "
         "under a second and verify:"
     ))
