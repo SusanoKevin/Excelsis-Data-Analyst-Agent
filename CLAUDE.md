@@ -164,7 +164,17 @@ Users are stored as bcrypt-hashed records in `api/users.json`. On startup, `ensu
 
 ### MCP server (`src/mcp_server.py`)
 
-FastMCP stdio server. User identity is set at process start via the `MCP_USER_ID` env var — one process per user. The server exposes 6 tools: `ask_analyst`, `data_summary`, `threshold_alerts`, `group_statistics`, `schema_lookup`, `knowledge_lookup`.
+FastMCP stdio server that gives a model direct access to Excelsis 360 data. On startup it initialises `SQLDataStore`, `ExcelsisRAGStore`, and `ExcelsisAgent`; user identity is fixed for the process lifetime via `MCP_USER_ID`.
+
+The server exposes two interaction modes:
+
+- **`ask_analyst(query)`** — routes a natural-language question through the full LangGraph ReAct loop; the agent selects tools, reasons step-by-step, and returns a complete answer. Use this when the model wants the agent to do the work.
+- **Direct data tools** — bypass the agent and return raw results the model can reason about itself:
+  - `data_summary()` — JSON overview (record count, entity count, date range, metric rate)
+  - `threshold_alerts(threshold)` — entities below a metric threshold
+  - `group_statistics(group_by, period)` — metric stats grouped by dimension and period
+  - `schema_lookup(query)` — vector search of DB table/column metadata
+  - `knowledge_lookup(query)` — vector search of policy and rule documents
 
 ### Data backend (`src/sql_store.py`)
 
