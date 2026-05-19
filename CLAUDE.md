@@ -72,6 +72,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ```bash
 ollama pull phi4:14b
+ollama pull nomic-embed-text
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.lock          # use the lock file for reproducible installs
@@ -90,6 +91,18 @@ Key optional variables:
 - `MODEL` — default `phi4:14b`; Ollama model used by the ReAct agent
 - `AT_RISK_THRESHOLD` — default `75.0`
 - `ADMIN_PASSWORD` — default `admin123`; sets the initial admin password on first run
+
+Schema / domain config (all optional, override to point at any tabular SQL schema):
+- `PRIMARY_TABLE` — default `attendance`; main table the agent queries
+- `METRIC_COLUMN` / `POSITIVE_VALUE` — default `status` / `present`; what counts as a success
+- `DATE_COLUMN` — default `date`; time column for period filtering
+- `ENTITY_COLUMN` / `ENTITY_NAME_COLUMN` — default `student_id` / `student_name`
+- `GROUP_COLUMNS` — default `class,grade`; comma-separated grouping dimensions
+
+RAG / vector store config:
+- `CHROMA_PATH` — default `.chroma`; persistent ChromaDB directory
+- `EMBED_MODEL` — default `nomic-embed-text`; Ollama embedding model (must be pulled first)
+- `DOCS_PATH` — default `docs`; directory scanned for policy PDFs and Markdown files
 
 ## Running the Stack
 
@@ -131,7 +144,9 @@ Run cells in order (1 → 9). To change the analyst identity, edit `CURRENT_USER
 
 ### Request flow
 
-Browser → React (`web/`) → FastAPI (`api/`) → `ExcelsisAgent` (`src/agent.py`) → LangGraph ReAct loop → tools (`src/tools.py`) → `SQLAttendanceStore` (`src/sql_store.py`)
+Browser → React (`web/`) → FastAPI (`api/`) → `ExcelsisAgent` (`src/agent.py`) → LangGraph ReAct loop → tools (`src/tools.py`) → `SQLDataStore` (`src/sql_store.py`)
+
+For schema/policy questions, tools also call → `ExcelsisRAGStore` (`src/rag_store.py`) → ChromaDB vector search.
 
 The `/chat/stream` endpoint uses SSE (`StreamingResponse`); the frontend consumes `on_chat_model_stream`, `on_tool_start`, and `on_tool_end` events from LangGraph's `astream_events`.
 
@@ -143,10 +158,14 @@ The `/chat/stream` endpoint uses SSE (`StreamingResponse`); the frontend consume
 
 Users are stored as bcrypt-hashed records in `api/users.json`. On startup, `ensure_default_admin()` creates the admin account if missing. JWTs embed only `sub` (username) and `exp` (expiry); `decode_token()` reconstructs a `UserContext(user_id=username)` from them. Token TTL is 24 hours.
 
+### RAG layer (`src/rag_store.py` + `src/rag_ingestor.py`)
+
+`ExcelsisRAGStore` holds two ChromaDB collections: `excelsis_schema` (SQL table/column metadata, 6 results) and `excelsis_policy` (policy documents, 4 results). Embeddings use `nomic-embed-text` via Ollama. On startup, a background daemon thread runs `ExcelsisRAGIngestor`, which indexes every `.pdf` and `.md` file under `DOCS_PATH` and auto-ingests `INFORMATION_SCHEMA` for all databases in `SQL_DATABASES`. Chunk size: 800 chars, overlap: 80.
+
 ### MCP server (`src/mcp_server.py`)
 
-FastMCP stdio server. User identity is set at process start via the `MCP_USER_ID` env var — one process per user. The server exposes 4 tools: `ask_analyst`, `attendance_summary`, `at_risk_students`, `class_statistics`.
+FastMCP stdio server. User identity is set at process start via the `MCP_USER_ID` env var — one process per user. The server exposes 6 tools: `ask_analyst`, `data_summary`, `threshold_alerts`, `group_statistics`, `schema_lookup`, `knowledge_lookup`.
 
 ### Data backend (`src/sql_store.py`)
 
-`SQLAttendanceStore` connects to SQL Server via `pyodbc`. Connection is configured through env vars (`SQL_SERVER`, `SQL_DATABASES`, `SQL_PRIMARY_DB`, `SQL_AUTH_METHOD`, `SQL_USERNAME`, `SQL_PASSWORD`). Primary table: `attendance` with columns `student_id`, `student_name`, `class`, `grade`, `date` (DATE), `status` (`present`/`absent`/`late`/`excused`). The agent can also query other databases listed in `SQL_DATABASES` via the `run_sql_query` tool's `database` parameter.
+`SQLDataStore` connects to SQL Server via `pyodbc`. Connection is configured through env vars (`SQL_SERVER`, `SQL_DATABASES`, `SQL_PRIMARY_DB`, `SQL_AUTH_METHOD`, `SQL_USERNAME`, `SQL_PASSWORD`). The table and column names are fully configurable via `PRIMARY_TABLE`, `METRIC_COLUMN`, `POSITIVE_VALUE`, `DATE_COLUMN`, `ENTITY_COLUMN`, `ENTITY_NAME_COLUMN`, and `GROUP_COLUMNS` — defaults match the original attendance schema (`attendance`, `status`, `present`, `date`, `student_id`, `student_name`, `class,grade`). The agent can also query other databases listed in `SQL_DATABASES` via the `run_sql_query` tool's `database` parameter. All queries are read-only; writes are blocked via `sqlglot` parse-time validation.
