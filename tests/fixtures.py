@@ -36,7 +36,7 @@ class _TTLCache:
         self._store.clear()
 
 
-class AttendanceDataStore:
+class SampleDataStore:
     """In-memory pandas-backed store used exclusively as a test fixture."""
 
     def __init__(self, data_path: str | None = None) -> None:

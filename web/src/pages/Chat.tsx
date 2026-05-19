@@ -40,9 +40,9 @@ export default function Chat() {
       <div className="flex-1 flex flex-col min-w-0">
         <div className="border-b border-arctic-mist px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-carbon">Attendance Chat</h2>
+            <h2 className="text-sm font-semibold text-carbon">Analytics Chat</h2>
             <p className="text-xs text-pewter mt-0.5">
-              Ask anything about attendance data in natural language
+              Ask anything about Excelsis360 data in natural language
             </p>
           </div>
           {messages.length > 0 && (

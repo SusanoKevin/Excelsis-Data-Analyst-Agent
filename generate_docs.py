@@ -174,7 +174,7 @@ def header_footer(canvas, doc):
     canvas.line(MARGIN, PAGE_H - 1.4*cm, PAGE_W - MARGIN, PAGE_H - 1.4*cm)
     canvas.setFont("Helvetica-Bold", 8)
     canvas.setFillColor(CARBON)
-    canvas.drawString(MARGIN, PAGE_H - 1.2*cm, "Excelsis 360 — Attendance Analyst Agent")
+    canvas.drawString(MARGIN, PAGE_H - 1.2*cm, "Excelsis 360 — Data Analyst Agent")
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(PEWTER)
     canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 1.2*cm, "Technical Documentation")
@@ -197,7 +197,7 @@ def first_page(canvas, doc):
     canvas.drawCentredString(PAGE_W/2, PAGE_H - 2.8*cm, "Excelsis 360")
     canvas.setFont("Helvetica", 14)
     canvas.setFillColor(colors.HexColor("#aaaaaa"))
-    canvas.drawCentredString(PAGE_W/2, PAGE_H - 3.5*cm, "Attendance Analyst Agent")
+    canvas.drawCentredString(PAGE_W/2, PAGE_H - 3.5*cm, "Data Analyst Agent")
     canvas.setFont("Helvetica", 10)
     canvas.drawCentredString(PAGE_W/2, PAGE_H - 4.3*cm, "Technical Documentation  ·  v1.0")
     # Footer
@@ -226,7 +226,7 @@ def build():
         sp(180),
         Paragraph("Technical Documentation", Subtitle),
         sp(6),
-        Paragraph("An AI-powered attendance analysis platform for schools,<br/>built on locally-hosted LLMs, SQL Server, and a React web interface.", Subtitle),
+        Paragraph("An AI-powered data analyst for the Excelsis360 platform,<br/>built on locally-hosted LLMs, SQL Server, and a React web interface.", Subtitle),
         sp(20),
         hr(),
         sp(6),
@@ -241,7 +241,7 @@ def build():
         ("2", "Use Cases", "Scenarios the system is designed to support"),
         ("3", "System Architecture", "High-level design and data flow"),
         ("4", "Technology Stack", "Every library and tool used and why"),
-        ("5", "Data Backend — SQLAttendanceStore", "SQL Server integration, caching, and SQL safety"),
+        ("5", "Data Backend — SQLDataStore", "SQL Server integration, caching, and SQL safety"),
         ("6", "AI Agent — ExcelsisAgent", "LangGraph ReAct loop, tools, and streaming"),
         ("7", "Agent Tools", "All 7 tools exposed to the LLM"),
         ("8", "REST API", "FastAPI endpoints, auth, rate limiting, and SSE"),
@@ -436,7 +436,7 @@ def build():
         ["4. Agent", "ExcelsisAgent", "LangGraph ReAct", "Maintains conversation history, streams LLM events"],
         ["5. LLM", "phi4:14b", "Ollama / ChatOllama", "Reasons about which tools to call and in what order"],
         ["6. Tools", "7 LangGraph tools", "Python functions", "Execute SQL queries and compute statistics"],
-        ["7. Data Store", "SQLAttendanceStore", "pyodbc / SQL Server", "Read-only T-SQL queries with TTL cache"],
+        ["7. Data Store", "SQLDataStore", "pyodbc / SQL Server", "Read-only T-SQL queries with TTL cache"],
         ["8. Database", "SQL Server", "ODBC Driver 18", "Primary attendance table + optional extra databases"],
     ]
     story.append(simple_table(
@@ -456,14 +456,14 @@ def build():
 FastAPI (:8000)
   ├── /auth/*        JWT sign/verify, user CRUD
   ├── /chat/stream   SSE — delegates to ExcelsisAgent.astream_events()
-  └── /data/*        Direct SQLAttendanceStore queries (no LLM)
+  └── /data/*        Direct SQLDataStore queries (no LLM)
 
 ExcelsisAgent  (LangGraph ReAct)
   ├── ChatOllama ─── phi4:14b @ http://localhost:11434
   ├── Conversation history (last 10 turns)
   └── 7 tools ──────────────────────────────────────────────────────────┐
                                                                         │
-SQLAttendanceStore (read-only)                           Tools          │
+SQLDataStore (read-only)                           Tools          │
   ├── _assert_select_only()  ← sqlglot AST guard         ◄─────────────┘
   ├── _TTLCache (5-min TTL)
   └── pyodbc ─── SQL Server
@@ -471,7 +471,7 @@ SQLAttendanceStore (read-only)                           Tools          │
         └── extra_db_1, extra_db_2, …  (allowlisted)
 
 MCP Server (stdio)
-  └── FastMCP ─── ExcelsisAgent + SQLAttendanceStore
+  └── FastMCP ─── ExcelsisAgent + SQLDataStore
         ├── ask_analyst()
         ├── attendance_summary()
         ├── at_risk_students()
@@ -536,10 +536,10 @@ MCP Server (stdio)
     # ════════════════════════════════════════════════════════════════════════
     # Chapter 5: Data Backend
     # ════════════════════════════════════════════════════════════════════════
-    story += chapter("5. Data Backend — SQLAttendanceStore")
+    story += chapter("5. Data Backend — SQLDataStore")
 
     story.append(body(
-        "SQLAttendanceStore is the single source of truth for all attendance data. It is a read-only "
+        "SQLDataStore is the single source of truth for all Excelsis360 data. It is a read-only "
         "wrapper around a SQL Server database that provides four public methods used by both the API "
         "routes and the agent tools. It lives in src/sql_store.py."
     ))
@@ -603,7 +603,7 @@ MCP Server (stdio)
 
     story += section("5.3  TTL Cache")
     story.append(body(
-        "SQLAttendanceStore includes a simple in-process TTL cache (_TTLCache) with a 5-minute "
+        "SQLDataStore includes a simple in-process TTL cache (_TTLCache) with a 5-minute "
         "expiry. Both compute_stats() and get_at_risk() check the cache before hitting SQL Server. "
         "The cache key encodes all query parameters (group_by, period, classes, date bounds) so "
         "different filter combinations are cached independently. This reduces SQL Server load when "
@@ -677,7 +677,7 @@ LLM node  (phi4:14b)
         "tool usage rules. Key instructions include:"
     ))
     story += bullet_list([
-        "Identity: \"Expert School Attendance Analyst for Excelsis 360\"",
+        "Identity: \"Expert Data Analyst for Excelsis 360\"",
         "Data integrity: never fabricate statistics; say so if data is unavailable",
         "Threshold: flag any class or student below 75% as at-risk",
         "Efficiency: call tools immediately — never narrate a tool call before making it",
@@ -728,7 +728,7 @@ LLM node  (phi4:14b)
     story.append(body(
         "The agent has access to 7 tools defined in src/tools.py. Each tool is a Python function "
         "decorated with @tool from LangChain. The docstring is the tool description shown to the LLM. "
-        "All tools receive a RunnableConfig from LangGraph that carries the SQLAttendanceStore instance."
+        "All tools receive a RunnableConfig from LangGraph that carries the SQLDataStore instance."
     ))
     story.append(sp())
 
@@ -852,7 +852,7 @@ LLM node  (phi4:14b)
     ))
     story += bullet_list([
         "ensure_default_admin() creates the admin account in users.json if it doesn't exist.",
-        "SQLAttendanceStore() is instantiated and stored on app.state.store.",
+        "SQLDataStore() is instantiated and stored on app.state.store.",
         "ExcelsisAgent(store=store) is instantiated and stored on app.state.agent.",
         "_validate_startup() checks Ollama reachability and SQL Server connectivity, printing a status table.",
     ])
@@ -1061,7 +1061,7 @@ python -m src.mcp_server"""
     cells = [
         ["1", "Setup & imports", "Load environment variables, import src modules"],
         ["2", "Connectivity check", "Verify Ollama is running at http://localhost:11434; fail fast if not"],
-        ["3", "Connect to SQL Server", "Instantiate SQLAttendanceStore and print summary"],
+        ["3", "Connect to SQL Server", "Instantiate SQLDataStore and print summary"],
         ["4", "Data summary", "Call store.summary() and display as a formatted dict"],
         ["5", "Set analyst identity", "Set CURRENT_USER = UserContext(user_id='...') — determines the identity used for all agent calls"],
         ["6", "Agent setup", "Instantiate ExcelsisAgent(store=store) with the SQL backend"],
@@ -1325,7 +1325,7 @@ def my_new_tool(param: str, config: RunnableConfig = None) -> str:
         "To add per-user filtering:"
     ))
     story += bullet_list([
-        "In SQLAttendanceStore, add a user_id column to the attendance table and a user→classes mapping.",
+        "In SQLDataStore, add a user_id column to the attendance table and a user→classes mapping.",
         "In each tool, extract user_id from config['configurable']['user_context'].user_id.",
         "Pass allowed classes as an additional filter to store._query().",
         "No changes to the agent or API layer are needed.",

@@ -32,8 +32,8 @@ from src.tools import (
 # ---------------------------------------------------------------------------
 
 def _make_store(classes=("10A", "10B", "11A")):
-    """Minimal AttendanceDataStore seeded with synthetic data (no SQL Server needed)."""
-    from tests.fixtures import AttendanceDataStore
+    """Minimal SampleDataStore seeded with synthetic data (no SQL Server needed)."""
+    from tests.fixtures import SampleDataStore
 
     rows = []
     for cls in classes:
@@ -46,7 +46,7 @@ def _make_store(classes=("10A", "10B", "11A")):
                 "class":        cls,
                 "grade":        cls[:2],
             })
-    store = AttendanceDataStore()
+    store = SampleDataStore()
     store.ingest_df(pd.DataFrame(rows), name="qa_fixture")
     return store
 
