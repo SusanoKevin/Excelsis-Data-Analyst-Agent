@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import os
 import time
+from urllib.parse import quote_plus
 
 import numpy as np
 import pandas as pd
-import pyodbc
 import sqlglot
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
+from sqlalchemy.pool import QueuePool
 from sqlglot import exp
 
 _FORBIDDEN = (
@@ -31,14 +34,25 @@ def _assert_select_only(sql: str) -> None:
             raise PermissionError(f"Read-only store: {type(node).__name__} statements are not permitted.")
 
 
-def _build_conn_str(database: str) -> str:
-    server   = os.environ["SQL_SERVER"]
-    driver   = os.environ.get("SQL_DRIVER", "{ODBC Driver 18 for SQL Server}")
-    username = os.environ["SQL_USERNAME"]
-    password = os.environ["SQL_PASSWORD"]
-    return (
+def _build_engine(database: str) -> Engine:
+    server    = os.environ["SQL_SERVER"]
+    driver    = os.environ.get("SQL_DRIVER", "{ODBC Driver 18 for SQL Server}")
+    username  = os.environ["SQL_USERNAME"]
+    password  = os.environ["SQL_PASSWORD"]
+    pool_size = int(os.environ.get("SQL_POOL_SIZE", "5"))
+    timeout   = int(os.environ.get("SQL_QUERY_TIMEOUT", "30"))
+    dsn = (
         f"DRIVER={driver};SERVER={server};DATABASE={database};"
         f"UID={username};PWD={password};TrustServerCertificate=yes;"
+    )
+    url = f"mssql+pyodbc:///?odbc_connect={quote_plus(dsn)}"
+    return create_engine(
+        url,
+        poolclass=QueuePool,
+        pool_size=pool_size,
+        max_overflow=10,
+        pool_pre_ping=True,
+        connect_args={"timeout": timeout},
     )
 
 
@@ -92,6 +106,7 @@ class SQLDataStore:
             if c.strip()
         ]
         self._group_expr = self._build_group_expr()
+        self._engines: dict[str, Engine] = {db: _build_engine(db) for db in self._databases}
         self._cache = _TTLCache(ttl=300)
 
     def _build_group_expr(self) -> dict[str, tuple[str, str]]:
@@ -115,11 +130,15 @@ class SQLDataStore:
         target_db = database or self._primary_db
         if target_db not in self._databases:
             raise PermissionError(f"Database '{target_db}' is not in the configured allowlist.")
-        conn = pyodbc.connect(_build_conn_str(target_db), autocommit=True)
+        conn = self._engines[target_db].raw_connection()
         try:
             return pd.read_sql(sql, conn, params=params or None)
         finally:
             conn.close()
+
+    def close(self) -> None:
+        for engine in self._engines.values():
+            engine.dispose()
 
     def summary(self) -> dict:
         t, mc, pv = self._table, self._metric_col, self._positive_val

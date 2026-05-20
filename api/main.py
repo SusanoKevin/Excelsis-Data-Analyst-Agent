@@ -73,6 +73,7 @@ async def lifespan(app: FastAPI):
 
     await asyncio.to_thread(_validate_startup, store)
     yield
+    store.close()
 
 
 async def _on_rate_limit_exceeded(request: Request, exc: RateLimitExceeded) -> JSONResponse:
