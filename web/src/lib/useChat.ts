@@ -19,7 +19,6 @@ export function useChat(onDashboardFilter?: (f: DashboardFilterEvent) => void) {
 
   useEffect(() => {
     try {
-      // Strip isStreaming flag before persisting
       const toSave = messages.map((m) => ({ ...m, isStreaming: false }))
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
     } catch {

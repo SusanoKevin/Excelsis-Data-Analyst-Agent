@@ -9,6 +9,7 @@ from api.limiter import limiter
 from api.models import ChatRequest
 from src.security import UserContext
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -27,7 +28,7 @@ async def chat_stream(
                 yield f"data: {json.dumps(event)}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
-            logging.getLogger(__name__).exception("Chat stream error")
+            logger.exception("Chat stream error")
             yield f"data: {json.dumps({'type': 'error', 'message': f'Model error: {e}'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

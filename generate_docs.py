@@ -120,10 +120,7 @@ def note(text):
     return Paragraph(f"<i>{text}</i>", Note)
 
 def bullet_list(items):
-    bullets = []
-    for item in items:
-        bullets.append(Paragraph(f"• {item}", BulletStyle))
-    return bullets
+    return [Paragraph(f"• {item}", BulletStyle) for item in items]
 
 def code_block(text):
     return Preformatted(text, CodeStyle)
@@ -255,12 +252,9 @@ def build():
         ("16", "Test Suite", "Unit and integration tests"),
         ("17", "Extending the System", "How to add databases, tools, and pages"),
     ]
-    toc_data = [["#", "Chapter", "Summary"]]
-    for num, title, desc in toc_items:
-        toc_data.append([num, title, desc])
     story.append(simple_table(
         ["#", "Chapter", "Summary"],
-        [(n, t, d) for n, t, d in toc_items],
+        toc_items,
         col_widths=[1*cm, 5.5*cm, PAGE_W - MARGIN*2 - 6.5*cm]
     ))
 

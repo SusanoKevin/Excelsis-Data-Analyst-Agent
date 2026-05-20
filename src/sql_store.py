@@ -80,13 +80,6 @@ def _ph(n: int) -> str:
 
 
 class SQLDataStore:
-    """
-    Read-only SQL backend configurable for any tabular dataset.
-    Configure via env vars: PRIMARY_TABLE, METRIC_COLUMN, POSITIVE_VALUE,
-    DATE_COLUMN, ENTITY_COLUMN, ENTITY_NAME_COLUMN, GROUP_COLUMNS.
-    See .env.example for defaults and documentation.
-    """
-
     def __init__(self) -> None:
         self._primary_db = os.environ.get("SQL_PRIMARY_DB", "attendance_db")
         self._databases: list[str] = [
@@ -188,7 +181,9 @@ class SQLDataStore:
         if cached is not None:
             return cached
 
-        col_expr, col_alias = self._group_expr.get(group_by, (group_by, group_by))
+        if group_by not in self._group_expr:
+            raise ValueError(f"Invalid group_by '{group_by}'. Valid: {', '.join(self._group_expr)}")
+        col_expr, col_alias = self._group_expr[group_by]
         t, mc, pv, dc = self._table, self._metric_col, self._positive_val, self._date_col
         params: list = [pv, pv]
 

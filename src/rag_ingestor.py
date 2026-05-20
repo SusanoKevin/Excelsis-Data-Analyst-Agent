@@ -30,11 +30,6 @@ def ingest_schemas(
     sql_store,
     force: bool = False,
 ) -> int:
-    """
-    Crawl INFORMATION_SCHEMA.COLUMNS for all configured databases and index
-    one Document per table into the schema collection.
-    Returns the number of new documents added (0 if already indexed).
-    """
     collection = store.schema_collection()
     added = 0
 
@@ -84,10 +79,6 @@ def ingest_docs(
     docs_path: str = "docs",
     force: bool = False,
 ) -> int:
-    """
-    Load all .pdf and .md files from docs_path and index them into the
-    policy collection.  Returns the number of new chunks added.
-    """
     collection = store.policy_collection()
     root = Path(docs_path)
     if not root.exists():
