@@ -26,7 +26,7 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 |---|---|
 | LLM | `phi4:14b` via Ollama (`langchain-ollama`) |
 | Agent | LangGraph ReAct (`create_react_agent`) |
-| Database | SQL Server via `pyodbc` (ODBC Driver 18) |
+| Database | SQL Server via SQLAlchemy + `pyodbc` (ODBC Driver 18, `QueuePool`) |
 | Backend | FastAPI + Uvicorn |
 | Auth | JWT (python-jose) + bcrypt |
 | Frontend | React 18 + Vite + Tailwind CSS |
@@ -54,7 +54,7 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 │
 ├── src/                  # Shared Python backend (used by API + notebook)
 │   ├── security.py       # UserContext dataclass (user_id)
-│   ├── sql_store.py      # SQLDataStore — primary data backend (SQL Server via pyodbc)
+│   ├── sql_store.py      # SQLDataStore — primary data backend (SQL Server via SQLAlchemy + pyodbc, pooled)
 │   ├── tools.py          # LangGraph tools (13 tools, all security-aware)
 │   ├── rag_store.py      # ChromaDB collections for schema and policy vector search
 │   ├── rag_ingestor.py   # Ingests PDFs/Markdown from docs/ + auto-indexes SQL schema
@@ -148,6 +148,8 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 | `SQL_AUTH_METHOD` | No | `sql` | `sql`, `windows`, or `azure_ad` |
 | `SQL_USERNAME` | If `sql` auth | — | SQL Server login username |
 | `SQL_PASSWORD` | If `sql` auth | — | SQL Server login password |
+| `SQL_POOL_SIZE` | No | `5` | SQLAlchemy `QueuePool` base connection count per database |
+| `SQL_QUERY_TIMEOUT` | No | `30` | Per-query connection timeout in seconds |
 | `AT_RISK_THRESHOLD` | No | `75.0` | Default attendance % threshold for at-risk flagging |
 | `JWT_SECRET` | Yes (prod) | `change-me-in-production` | Secret key for JWT signing |
 | `ADMIN_PASSWORD` | No | `admin123` | Password for the default admin account |

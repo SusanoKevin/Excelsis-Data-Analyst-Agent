@@ -86,6 +86,8 @@ Required `.env` variables:
 - `SQL_SERVER` — SQL Server hostname or IP
 - `SQL_DATABASES` — comma-separated list of databases to expose
 - `SQL_USERNAME` / `SQL_PASSWORD` — credentials when using `SQL_AUTH_METHOD=sql`
+- `SQL_POOL_SIZE` — default `5`; SQLAlchemy `QueuePool` base connection count per database
+- `SQL_QUERY_TIMEOUT` — default `30`; per-query connection timeout in seconds
 
 Key optional variables:
 - `MODEL` — default `phi4:14b`; Ollama model used by the ReAct agent
@@ -178,4 +180,4 @@ The server exposes two interaction modes:
 
 ### Data backend (`src/sql_store.py`)
 
-`SQLDataStore` connects to SQL Server via `pyodbc`. Connection is configured through env vars (`SQL_SERVER`, `SQL_DATABASES`, `SQL_PRIMARY_DB`, `SQL_AUTH_METHOD`, `SQL_USERNAME`, `SQL_PASSWORD`). The table and column names are fully configurable via `PRIMARY_TABLE`, `METRIC_COLUMN`, `POSITIVE_VALUE`, `DATE_COLUMN`, `ENTITY_COLUMN`, `ENTITY_NAME_COLUMN`, and `GROUP_COLUMNS` — defaults match the original attendance schema (`attendance`, `status`, `present`, `date`, `student_id`, `student_name`, `class,grade`). The agent can also query other databases listed in `SQL_DATABASES` via the `run_sql_query` tool's `database` parameter. All queries are read-only; writes are blocked via `sqlglot` parse-time validation.
+`SQLDataStore` connects to SQL Server via SQLAlchemy (`mssql+pyodbc`) with a `QueuePool` connection pool (one engine per database, created at startup). Pool size and per-query timeout are controlled by `SQL_POOL_SIZE` (default `5`) and `SQL_QUERY_TIMEOUT` (default `30` s). All other connection settings come from env vars: `SQL_SERVER`, `SQL_DATABASES`, `SQL_PRIMARY_DB`, `SQL_AUTH_METHOD`, `SQL_USERNAME`, `SQL_PASSWORD`. The table and column names are fully configurable via `PRIMARY_TABLE`, `METRIC_COLUMN`, `POSITIVE_VALUE`, `DATE_COLUMN`, `ENTITY_COLUMN`, `ENTITY_NAME_COLUMN`, and `GROUP_COLUMNS` — defaults match the original attendance schema (`attendance`, `status`, `present`, `date`, `student_id`, `student_name`, `class,grade`). The agent can also query other databases listed in `SQL_DATABASES` via the `run_sql_query` tool's `database` parameter. All queries are read-only; writes are blocked via `sqlglot` parse-time validation. `store.close()` disposes all engines and is called automatically on FastAPI lifespan shutdown.
