@@ -57,9 +57,10 @@ def _build_engine(database: str) -> Engine:
 
 
 class _TTLCache:
-    def __init__(self, ttl: int = 300) -> None:
+    def __init__(self, ttl: int = 300, maxsize: int = 0) -> None:
         self._store: dict = {}
         self._ttl = ttl
+        self._maxsize = maxsize
 
     def get(self, key: str):
         entry = self._store.get(key)
@@ -72,6 +73,9 @@ class _TTLCache:
         return value
 
     def set(self, key: str, value) -> None:
+        if self._maxsize > 0 and len(self._store) >= self._maxsize and key not in self._store:
+            oldest = min(self._store, key=lambda k: self._store[k][1])
+            del self._store[oldest]
         self._store[key] = (value, time.monotonic() + self._ttl)
 
 
@@ -134,6 +138,10 @@ class SQLDataStore:
             engine.dispose()
 
     def summary(self) -> dict:
+        cached = self._cache.get("summary:all")
+        if cached is not None:
+            return cached
+
         t, mc, pv = self._table, self._metric_col, self._positive_val
         dc, ec    = self._date_col, self._entity_col
         df = self._query(f"""
@@ -158,7 +166,7 @@ class SQLDataStore:
         ) if first_dim else pd.DataFrame()
 
         row = df.iloc[0]
-        return {
+        result = {
             "total_records":         int(row["total_records"]),
             "entity_count":          int(row["entity_count"]),
             "date_range":            {"from": str(row["date_from"]), "to": str(row["date_to"])},
@@ -166,6 +174,8 @@ class SQLDataStore:
             "below_threshold_count": int(row["below_threshold_count"]),
             "dimensions":            dims_df[first_dim].tolist() if first_dim and not dims_df.empty else [],
         }
+        self._cache.set("summary:all", result)
+        return result
 
     def compute_stats(
         self,
@@ -286,6 +296,11 @@ class SQLDataStore:
     def entity_weekly_rates(self, entity_ids: list, weeks: int = 6) -> dict:
         if not entity_ids:
             return {}
+        cache_key = f"weekly:{','.join(str(e) for e in sorted(entity_ids))}:{weeks}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         t, mc, pv, dc, ec = self._table, self._metric_col, self._positive_val, self._date_col, self._entity_col
         week_expr = (
             f"CONVERT(NVARCHAR(10),DATEADD(dd,1-DATEPART(dw,{dc}),{dc}),23)"
@@ -314,11 +329,13 @@ class SQLDataStore:
             df.pivot(index="entity_id", columns="week", values="rate")
             .reindex(columns=all_weeks)
         )
-        return {
+        result = {
             eid: [None if pd.isna(v) else float(v) for v in pivot.loc[eid]]
             if eid in pivot.index else [None] * len(all_weeks)
             for eid in entity_ids
         }
+        self._cache.set(cache_key, result)
+        return result
 
     def compute_statistical_summary(
         self,
@@ -376,6 +393,11 @@ class SQLDataStore:
         date_from: str | None = None,
         date_to:   str | None = None,
     ) -> dict:
+        cache_key = f"trend:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         df = self.compute_stats("week", "all", classes, date_from, date_to)
         if df.empty or "metric_rate" not in df.columns or len(df) < 2:
             return {"direction": "unknown", "slope_per_week": 0.0, "weeks": []}
@@ -385,8 +407,10 @@ class SQLDataStore:
         if   slope >  0.1: direction = "improving"
         elif slope < -0.1: direction = "declining"
         else:              direction = "stable"
-        return {
+        result = {
             "direction":      direction,
             "slope_per_week": round(slope, 2),
             "weeks":          df.to_dict(orient="records"),
         }
+        self._cache.set(cache_key, result)
+        return result

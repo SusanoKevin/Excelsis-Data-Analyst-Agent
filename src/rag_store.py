@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
+
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
+
+from .sql_store import _TTLCache
 
 
 class ExcelsisRAGStore:
@@ -32,6 +36,8 @@ class ExcelsisRAGStore:
             embedding_function=embeddings,
             persist_directory=chroma_path,
         )
+        rag_ttl = int(os.environ.get("RAG_CACHE_TTL", "3600"))
+        self._cache = _TTLCache(ttl=rag_ttl, maxsize=256)
 
     def schema_collection(self) -> Chroma:
         return self._schema_vs
@@ -40,13 +46,21 @@ class ExcelsisRAGStore:
         return self._policy_vs
 
     def retrieve_schema(self, query: str) -> str:
+        cache_key = f"schema:{hash(query)}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
         docs = self._schema_vs.similarity_search(query, k=self._schema_k)
-        if not docs:
-            return "No schema information found."
-        return "\n\n---\n\n".join(d.page_content for d in docs)
+        result = "No schema information found." if not docs else "\n\n---\n\n".join(d.page_content for d in docs)
+        self._cache.set(cache_key, result)
+        return result
 
     def retrieve_policy(self, query: str) -> str:
+        cache_key = f"policy:{hash(query)}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
         docs = self._policy_vs.similarity_search(query, k=self._policy_k)
-        if not docs:
-            return "No policy information found."
-        return "\n\n---\n\n".join(d.page_content for d in docs)
+        result = "No policy information found." if not docs else "\n\n---\n\n".join(d.page_content for d in docs)
+        self._cache.set(cache_key, result)
+        return result

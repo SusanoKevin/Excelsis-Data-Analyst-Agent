@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 
 from api.deps import get_current_user, get_store
 from src.security import UserContext
@@ -12,19 +12,22 @@ def _parse_classes(classes_str: str) -> list[str] | None:
 
 
 @router.get("/summary")
-def summary(request: Request, _: UserContext = Depends(get_current_user)):
+def summary(request: Request, response: Response, _: UserContext = Depends(get_current_user)):
+    response.headers["Cache-Control"] = "private, max-age=300"
     return get_store(request).summary()
 
 
 @router.get("/alerts")
 def alerts(
     request: Request,
+    response: Response,
     threshold: float = 75.0,
     classes: str = "",
     date_from: str = "",
     date_to: str = "",
     _: UserContext = Depends(get_current_user),
 ):
+    response.headers["Cache-Control"] = "private, max-age=300"
     store = get_store(request)
     df    = store.get_threshold_alerts(
         threshold=threshold,
@@ -38,6 +41,7 @@ def alerts(
 @router.get("/stats")
 def stats(
     request: Request,
+    response: Response,
     group_by: str = "class",
     period: str = "all",
     classes: str = "",
@@ -45,6 +49,7 @@ def stats(
     date_to: str = "",
     _: UserContext = Depends(get_current_user),
 ):
+    response.headers["Cache-Control"] = "private, max-age=300"
     store = get_store(request)
     df    = store.compute_stats(
         group_by=group_by,
@@ -59,9 +64,11 @@ def stats(
 @router.get("/trends")
 def trends(
     request: Request,
+    response: Response,
     classes: str = "",
     _: UserContext = Depends(get_current_user),
 ):
+    response.headers["Cache-Control"] = "private, max-age=300"
     store = get_store(request)
     cls   = _parse_classes(classes)
     current  = store.compute_stats(group_by="week", period="last_30_days",  classes=cls)
@@ -75,9 +82,11 @@ def trends(
 @router.get("/sparklines")
 def sparklines(
     request: Request,
+    response: Response,
     ids: str,
     _: UserContext = Depends(get_current_user),
 ):
+    response.headers["Cache-Control"] = "private, max-age=300"
     store    = get_store(request)
     safe_ids = [x.strip() for x in ids.split(",") if 0 < len(x.strip()) <= 50]
     if not safe_ids:
