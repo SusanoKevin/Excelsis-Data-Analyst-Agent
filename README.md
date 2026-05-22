@@ -13,7 +13,7 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 - **Prompt guardrails** — every chat message is validated before reaching the agent: length cap (2000 chars), token-budget check, and injection-pattern detection
 - **SQL Server backend** — connects to one or more SQL Server databases; the agent can run ad-hoc T-SQL SELECT queries alongside structured tools
 - **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
-- **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, at-risk student table, and user management
+- **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, threshold alerts table, and user management
 - **REST API** — FastAPI backend with JWT auth, SSE streaming, file upload, and dashboard generation
 - **Rate limiting** — 10 requests/minute per IP on all chat and data endpoints (slowapi)
 - **Jupyter notebook** — full interactive analysis environment that shares the same `src/` backend
@@ -152,26 +152,26 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 | `SQL_DATABASES` | Yes | — | Comma-separated list of databases to expose |
 | `SQL_PRIMARY_DB` | No | first in list | Default database for queries |
 | `SQL_DRIVER` | No | `{ODBC Driver 18 for SQL Server}` | ODBC driver string |
-| `SQL_AUTH_METHOD` | No | `sql` | `sql`, `windows`, or `azure_ad` |
-| `SQL_USERNAME` | If `sql` auth | — | SQL Server login username |
-| `SQL_PASSWORD` | If `sql` auth | — | SQL Server login password |
+| `SQL_USERNAME` | Yes | — | SQL Server login username |
+| `SQL_PASSWORD` | Yes | — | SQL Server login password |
 | `SQL_POOL_SIZE` | No | `5` | SQLAlchemy `QueuePool` base connection count per database |
 | `SQL_QUERY_TIMEOUT` | No | `30` | Per-query connection timeout in seconds |
-| `AT_RISK_THRESHOLD` | No | `75.0` | Default attendance % threshold for at-risk flagging |
+| `AT_RISK_THRESHOLD` | No | `75.0` | Default metric % threshold for below-threshold flagging |
 | `JWT_SECRET` | Yes (prod) | `change-me-in-production` | Secret key for JWT signing |
 | `ADMIN_PASSWORD` | No | `admin123` | Password for the default admin account |
 | `PRIMARY_TABLE` | No | `attendance` | Primary SQL table the agent queries |
 | `METRIC_COLUMN` | No | `status` | Column holding the measured metric |
-| `POSITIVE_VALUE` | No | `present` | Value counted as a positive outcome |
+| `POSITIVE_VALUE` | No | `active` | Value counted as a positive outcome |
 | `DATE_COLUMN` | No | `date` | Date column for time-based queries |
-| `ENTITY_COLUMN` | No | `student_id` | Primary entity key column |
-| `ENTITY_NAME_COLUMN` | No | `student_name` | Human-readable entity name column |
-| `GROUP_COLUMNS` | No | `class,grade` | Comma-separated grouping columns |
+| `ENTITY_COLUMN` | No | `entity_id` | Primary entity key column |
+| `ENTITY_NAME_COLUMN` | No | `entity_name` | Human-readable entity name column |
+| `GROUP_COLUMNS` | No | `` | Comma-separated grouping columns |
 | `CHROMA_PATH` | No | `.chroma` | Persistent ChromaDB directory path |
 | `EMBED_MODEL` | No | `nomic-embed-text` | Ollama embedding model for RAG |
 | `DOCS_PATH` | No | `docs` | Directory scanned for policy documents |
 | `MAX_MESSAGE_LEN` | No | `2000` | Maximum characters allowed in a single chat message |
 | `MAX_PROMPT_TOKENS` | No | `2048` | Maximum estimated tokens (message + history) before rejection |
+| `RAG_CACHE_TTL` | No | `3600` | TTL in seconds for RAG query result cache |
 
 ---
 
@@ -245,7 +245,7 @@ The FastAPI backend is available at `http://localhost:8000`. Interactive docs at
 | DELETE | `/auth/users/{username}` | Admin | Delete user |
 | POST | `/chat/stream` | Any | SSE streaming chat |
 | GET | `/data/summary` | Any | Data overview |
-| GET | `/data/at-risk` | Counselor+ | At-risk student list |
+| GET | `/data/alerts` | Any | Threshold alerts — entities below a metric % |
 | GET | `/data/stats` | Any | Stats by group/period |
 | GET | `/data/trends` | Any | Period comparison: last 30 days vs prior 30 days |
 | GET | `/data/sparklines` | Any | Sparkline trend data |

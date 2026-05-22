@@ -97,15 +97,16 @@ Key optional variables:
 
 Schema / domain config (all optional, override to point at any tabular SQL schema):
 - `PRIMARY_TABLE` — default `attendance`; main table the agent queries
-- `METRIC_COLUMN` / `POSITIVE_VALUE` — default `status` / `present`; what counts as a success
+- `METRIC_COLUMN` / `POSITIVE_VALUE` — default `status` / `active`; what counts as a success
 - `DATE_COLUMN` — default `date`; time column for period filtering
-- `ENTITY_COLUMN` / `ENTITY_NAME_COLUMN` — default `student_id` / `student_name`
-- `GROUP_COLUMNS` — default `class,grade`; comma-separated grouping dimensions
+- `ENTITY_COLUMN` / `ENTITY_NAME_COLUMN` — default `entity_id` / `entity_name`
+- `GROUP_COLUMNS` — no default (empty); comma-separated grouping dimensions
 
 RAG / vector store config:
 - `CHROMA_PATH` — default `.chroma`; persistent ChromaDB directory
 - `EMBED_MODEL` — default `nomic-embed-text`; Ollama embedding model (must be pulled first)
 - `DOCS_PATH` — default `docs`; directory scanned for policy PDFs and Markdown files
+- `RAG_CACHE_TTL` — default `3600`; TTL in seconds for RAG query result cache
 
 Prompt validation config:
 - `MAX_MESSAGE_LEN` — default `2000`; maximum characters in a single chat message
@@ -206,4 +207,4 @@ The server exposes two interaction modes:
 
 ### Data backend (`src/sql_store.py`)
 
-`SQLDataStore` connects to SQL Server via SQLAlchemy (`mssql+pyodbc`) with a `QueuePool` connection pool (one engine per database, created at startup). Pool size and per-query timeout are controlled by `SQL_POOL_SIZE` (default `5`) and `SQL_QUERY_TIMEOUT` (default `30` s). All other connection settings come from env vars: `SQL_SERVER`, `SQL_DATABASES`, `SQL_PRIMARY_DB`, `SQL_AUTH_METHOD`, `SQL_USERNAME`, `SQL_PASSWORD`. The table and column names are fully configurable via `PRIMARY_TABLE`, `METRIC_COLUMN`, `POSITIVE_VALUE`, `DATE_COLUMN`, `ENTITY_COLUMN`, `ENTITY_NAME_COLUMN`, and `GROUP_COLUMNS` — defaults match the original attendance schema (`attendance`, `status`, `present`, `date`, `student_id`, `student_name`, `class,grade`). The agent can also query other databases listed in `SQL_DATABASES` via the `run_sql_query` tool's `database` parameter. All queries are read-only; writes are blocked via `sqlglot` parse-time validation. `store.close()` disposes all engines and is called automatically on FastAPI lifespan shutdown.
+`SQLDataStore` connects to SQL Server via SQLAlchemy (`mssql+pyodbc`) with a `QueuePool` connection pool (one engine per database, created at startup). Pool size and per-query timeout are controlled by `SQL_POOL_SIZE` (default `5`) and `SQL_QUERY_TIMEOUT` (default `30` s). All other connection settings come from env vars: `SQL_SERVER`, `SQL_DATABASES`, `SQL_PRIMARY_DB`, `SQL_AUTH_METHOD`, `SQL_USERNAME`, `SQL_PASSWORD`. The table and column names are fully configurable via `PRIMARY_TABLE`, `METRIC_COLUMN`, `POSITIVE_VALUE`, `DATE_COLUMN`, `ENTITY_COLUMN`, `ENTITY_NAME_COLUMN`, and `GROUP_COLUMNS` — code defaults are `status`, `active`, `date`, `entity_id`, `entity_name`, and empty (no grouping); `PRIMARY_TABLE` has no default and must be set. The agent can also query other databases listed in `SQL_DATABASES` via the `run_sql_query` tool's `database` parameter. All queries are read-only; writes are blocked via `sqlglot` parse-time validation. `store.close()` disposes all engines and is called automatically on FastAPI lifespan shutdown.
