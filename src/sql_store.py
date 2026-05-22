@@ -20,7 +20,7 @@ _FORBIDDEN = (
 
 def _assert_select_only(sql: str) -> None:
     try:
-        trees = [t for t in sqlglot.parse(sql, dialect="tsql") if t is not None]
+        trees = [t for t in sqlglot.parse(sql.replace("?", "NULL"), dialect="tsql") if t is not None]
     except Exception as e:
         raise ValueError(f"Could not parse SQL: {e}") from e
     if not trees:
@@ -85,21 +85,21 @@ def _ph(n: int) -> str:
 
 class SQLDataStore:
     def __init__(self) -> None:
-        self._primary_db = os.environ.get("SQL_PRIMARY_DB", "attendance_db")
+        self._primary_db = os.environ.get("SQL_PRIMARY_DB", "")
         self._databases: list[str] = [
             d.strip()
             for d in os.environ.get("SQL_DATABASES", self._primary_db).split(",")
             if d.strip()
         ]
-        self._table           = os.environ.get("PRIMARY_TABLE",       "attendance")
+        self._table           = os.environ.get("PRIMARY_TABLE",       "")
         self._metric_col      = os.environ.get("METRIC_COLUMN",       "status")
-        self._positive_val    = os.environ.get("POSITIVE_VALUE",      "present")
+        self._positive_val    = os.environ.get("POSITIVE_VALUE",      "active")
         self._date_col        = os.environ.get("DATE_COLUMN",         "date")
-        self._entity_col      = os.environ.get("ENTITY_COLUMN",       "student_id")
-        self._entity_name_col = os.environ.get("ENTITY_NAME_COLUMN",  "student_name")
+        self._entity_col      = os.environ.get("ENTITY_COLUMN",       "entity_id")
+        self._entity_name_col = os.environ.get("ENTITY_NAME_COLUMN",  "entity_name")
         self._group_cols: list[str] = [
             c.strip()
-            for c in os.environ.get("GROUP_COLUMNS", "class,grade").split(",")
+            for c in os.environ.get("GROUP_COLUMNS", "").split(",")
             if c.strip()
         ]
         self._group_expr = self._build_group_expr()
@@ -122,6 +122,19 @@ class SQLDataStore:
         expr["day_of_week"] = (f"DATENAME(dw,{dc})",     "day_of_week")
         return expr
 
+    @property
+    def databases(self) -> list[str]:
+        return list(self._databases)
+
+    @property
+    def primary_db(self) -> str:
+        return self._primary_db
+
+    def _require_table(self) -> str:
+        if not self._table:
+            raise RuntimeError("PRIMARY_TABLE is not configured. Set PRIMARY_TABLE in your .env file.")
+        return self._table
+
     def _query(self, sql: str, params: tuple = (), database: str | None = None) -> pd.DataFrame:
         _assert_select_only(sql)
         target_db = database or self._primary_db
@@ -133,11 +146,19 @@ class SQLDataStore:
         finally:
             conn.close()
 
+    def ping(self, database: str | None = None) -> bool:
+        try:
+            self._query("SELECT 1", database=database)
+            return True
+        except Exception:
+            return False
+
     def close(self) -> None:
         for engine in self._engines.values():
             engine.dispose()
 
     def summary(self) -> dict:
+        self._require_table()
         cached = self._cache.get("summary:all")
         if cached is not None:
             return cached
@@ -181,12 +202,13 @@ class SQLDataStore:
         self,
         group_by:  str = "",
         period:    str = "all",
-        classes:   list[str] | None = None,
+        segments:  list[str] | None = None,
         date_from: str | None = None,
         date_to:   str | None = None,
     ) -> pd.DataFrame:
+        self._require_table()
         group_by  = group_by or (self._group_cols[0] if self._group_cols else self._entity_col)
-        cache_key = f"stats:{group_by}:{period}:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
+        cache_key = f"stats:{group_by}:{period}:{','.join(sorted(segments or []))}:{date_from or ''}:{date_to or ''}"
         cached    = self._cache.get(cache_key)
         if cached is not None:
             return cached
@@ -218,10 +240,10 @@ class SQLDataStore:
         else:
             period_clause = ""
 
-        group_clause = ""
-        if classes and self._group_cols:
-            group_clause = f"AND {self._group_cols[0]} IN ({_ph(len(classes))})"
-            params.extend(classes)
+        segment_clause = ""
+        if segments and self._group_cols:
+            segment_clause = f"AND {self._group_cols[0]} IN ({_ph(len(segments))})"
+            params.extend(segments)
 
         result = self._query(f"""
         SELECT
@@ -233,7 +255,7 @@ class SQLDataStore:
         FROM {t}
         WHERE 1=1
         {period_clause}
-        {group_clause}
+        {segment_clause}
         GROUP BY {col_expr}
         """, params=tuple(params))
         self._cache.set(cache_key, result)
@@ -242,11 +264,12 @@ class SQLDataStore:
     def get_threshold_alerts(
         self,
         threshold: float = 75.0,
-        classes:   list[str] | None = None,
+        segments:  list[str] | None = None,
         date_from: str | None = None,
         date_to:   str | None = None,
     ) -> pd.DataFrame:
-        cache_key = f"alerts:{threshold}:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
+        self._require_table()
+        cache_key = f"alerts:{threshold}:{','.join(sorted(segments or []))}:{date_from or ''}:{date_to or ''}"
         cached    = self._cache.get(cache_key)
         if cached is not None:
             return cached
@@ -256,10 +279,10 @@ class SQLDataStore:
         grp0          = self._group_cols[0] if self._group_cols else None
         params: list  = [pv, pv]
 
-        group_clause = ""
-        if classes and grp0:
-            group_clause = f"AND {grp0} IN ({_ph(len(classes))})"
-            params.extend(classes)
+        segment_clause = ""
+        if segments and grp0:
+            segment_clause = f"AND {grp0} IN ({_ph(len(segments))})"
+            params.extend(segments)
 
         date_clause = ""
         if date_from:
@@ -283,7 +306,7 @@ class SQLDataStore:
                 /NULLIF(COUNT(*),0),1)                                        AS metric_rate
         FROM {t}
         WHERE 1=1
-        {group_clause}
+        {segment_clause}
         {date_clause}
         GROUP BY {ec}
         HAVING ROUND(100.0*SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)
@@ -296,6 +319,7 @@ class SQLDataStore:
     def entity_weekly_rates(self, entity_ids: list, weeks: int = 6) -> dict:
         if not entity_ids:
             return {}
+        self._require_table()
         cache_key = f"weekly:{','.join(str(e) for e in sorted(entity_ids))}:{weeks}"
         cached = self._cache.get(cache_key)
         if cached is not None:
@@ -341,11 +365,11 @@ class SQLDataStore:
         self,
         group_by:  str = "",
         period:    str = "all",
-        classes:   list[str] | None = None,
+        segments:  list[str] | None = None,
         date_from: str | None = None,
         date_to:   str | None = None,
     ) -> dict:
-        df = self.compute_stats(group_by, period, classes, date_from, date_to)
+        df = self.compute_stats(group_by, period, segments, date_from, date_to)
         if df.empty or "metric_rate" not in df.columns:
             return {"error": "No data available."}
         return df["metric_rate"].describe().round(1).to_dict()
@@ -355,11 +379,11 @@ class SQLDataStore:
         group_by:  str   = "",
         sigma:     float = 2.0,
         period:    str   = "all",
-        classes:   list[str] | None = None,
+        segments:  list[str] | None = None,
         date_from: str | None = None,
         date_to:   str | None = None,
     ) -> pd.DataFrame:
-        df = self.compute_stats(group_by, period, classes, date_from, date_to).copy()
+        df = self.compute_stats(group_by, period, segments, date_from, date_to).copy()
         if df.empty or "metric_rate" not in df.columns:
             return pd.DataFrame()
         mean = df["metric_rate"].mean()
@@ -375,11 +399,11 @@ class SQLDataStore:
         n:         int  = 10,
         ascending: bool = True,
         period:    str  = "all",
-        classes:   list[str] | None = None,
+        segments:  list[str] | None = None,
         date_from: str | None = None,
         date_to:   str | None = None,
     ) -> pd.DataFrame:
-        df = self.compute_stats(group_by, period, classes, date_from, date_to)
+        df = self.compute_stats(group_by, period, segments, date_from, date_to)
         if df.empty or "metric_rate" not in df.columns:
             return pd.DataFrame()
         return (
@@ -389,16 +413,16 @@ class SQLDataStore:
 
     def analyze_weekly_trend(
         self,
-        classes:   list[str] | None = None,
+        segments:  list[str] | None = None,
         date_from: str | None = None,
         date_to:   str | None = None,
     ) -> dict:
-        cache_key = f"trend:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
+        cache_key = f"trend:{','.join(sorted(segments or []))}:{date_from or ''}:{date_to or ''}"
         cached = self._cache.get(cache_key)
         if cached is not None:
             return cached
 
-        df = self.compute_stats("week", "all", classes, date_from, date_to)
+        df = self.compute_stats("week", "all", segments, date_from, date_to)
         if df.empty or "metric_rate" not in df.columns or len(df) < 2:
             return {"direction": "unknown", "slope_per_week": 0.0, "weeks": []}
         df    = df.sort_values("week").reset_index(drop=True)

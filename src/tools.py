@@ -8,6 +8,10 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 
+_VALID_PERIODS = frozenset({"all", "last_7_days", "last_30_days"})
+_VALID_VIEWS   = frozenset({"overview", "group", "entity"})
+
+
 def _df_to_text(df: pd.DataFrame, max_rows: int = 50) -> str:
     if df.empty:
         return "No data available."
@@ -34,6 +38,10 @@ def query_data(
               or specify 'week', 'month', 'day_of_week', or the entity column.
     period:   'all' | 'last_7_days' | 'last_30_days'
     """
+    if period not in _VALID_PERIODS:
+        return f"Invalid period '{period}': must be one of 'all', 'last_7_days', 'last_30_days'."
+    if len(group_by) > 100:
+        return "Invalid group_by: must be 100 characters or fewer."
     store = _store(config)
     if store is None:
         return "No data store connected."
@@ -51,6 +59,8 @@ def get_threshold_alerts(
     Return entities whose metric rate is below the given threshold (default 75%).
     Includes entity ID, label (if available), group, and metric rate.
     """
+    if not 0.0 <= threshold <= 100.0:
+        return f"Invalid threshold {threshold}: must be between 0.0 and 100.0."
     store = _store(config)
     if store is None:
         return "No data store connected."
@@ -76,7 +86,7 @@ def get_summary(config: RunnableConfig = None) -> str:
 
 @tool
 def update_dashboard_view(
-    classes: list[str] | None = None,
+    segments: list[str] | None = None,
     period: str = "all",
     view: str = "overview",
     config: RunnableConfig = None,
@@ -84,17 +94,17 @@ def update_dashboard_view(
     """
     Update the live dashboard to show a specific view.
 
-    classes: list of segment names to filter by (empty list = all)
-    period:  'all' | 'last_7_days' | 'last_30_days'
-    view:    'overview' | 'group' | 'entity'
+    segments: list of segment names to filter by (empty list = all)
+    period:   'all' | 'last_7_days' | 'last_30_days'
+    view:     'overview' | 'group' | 'entity'
 
     Examples:
-      update_dashboard_view(classes=["10A"], view="group")
+      update_dashboard_view(segments=["segment_a"], view="group")
       update_dashboard_view(period="last_30_days")
     """
-    safe_period = period if period in {"all", "last_7_days", "last_30_days"} else "all"
-    safe_view   = view   if view   in {"overview", "group", "entity"}        else "overview"
-    return json.dumps({"classes": classes or [], "period": safe_period, "view": safe_view})
+    safe_period = period if period in _VALID_PERIODS else "all"
+    safe_view   = view   if view   in _VALID_VIEWS   else "overview"
+    return json.dumps({"segments": segments or [], "period": safe_period, "view": safe_view})
 
 
 @tool
@@ -114,6 +124,10 @@ def run_sql_query(
     Use this when the built-in tools cannot answer a specific question.
     Always call retrieve_schema first to confirm table and column names.
     """
+    if not sql.strip():
+        return "SQL query cannot be empty."
+    if len(sql) > 5000:
+        return f"SQL query too long ({len(sql)} chars): maximum is 5000."
     store = _store(config)
     if store is None:
         return "No data store connected."
@@ -146,6 +160,10 @@ def compare_periods(
     period_a, period_b: 'all' | 'last_7_days' | 'last_30_days'
     Example: compare_periods(period_a='last_7_days', period_b='last_30_days')
     """
+    if period_a not in _VALID_PERIODS:
+        return f"Invalid period_a '{period_a}': must be one of 'all', 'last_7_days', 'last_30_days'."
+    if period_b not in _VALID_PERIODS:
+        return f"Invalid period_b '{period_b}': must be one of 'all', 'last_7_days', 'last_30_days'."
     store = _store(config)
     if store is None:
         return "No data store connected."
@@ -176,13 +194,17 @@ def compare_segments(
     """
     Compare metric statistics for two specific segments side by side.
     Returns total, positive_count, and metric_rate for each segment.
-    Example: compare_segments(segment_a='10A', segment_b='10B')
+    Example: compare_segments(segment_a='segment_a', segment_b='segment_b')
     """
+    if not segment_a or len(segment_a) > 100:
+        return "Invalid segment_a: must be a non-empty string of at most 100 characters."
+    if not segment_b or len(segment_b) > 100:
+        return "Invalid segment_b: must be a non-empty string of at most 100 characters."
     store = _store(config)
     if store is None:
         return "No data store connected."
 
-    df = store.compute_stats("", "all", classes=[segment_a, segment_b])
+    df = store.compute_stats("", "all", segments=[segment_a, segment_b])
     if df.empty:
         return f"No data found for segments '{segment_a}' or '{segment_b}'."
     return _df_to_text(df)
@@ -202,9 +224,13 @@ def retrieve_schema(
     query: natural-language description of what tables or columns you need.
     Examples:
       'primary table columns'
-      'enrollment_db registration table schema'
+      'secondary_db table schema'
       'what columns store entity group information'
     """
+    if not query.strip():
+        return "Schema query cannot be empty."
+    if len(query) > 500:
+        return f"Schema query too long ({len(query)} chars): maximum is 500."
     rag = _rag_store(config)
     if rag is None:
         return "Schema knowledge base not available."
@@ -225,10 +251,14 @@ def retrieve_policy(
 
     query: natural-language description of the policy topic you need.
     Examples:
-      'threshold for probation'
-      'excused absence documentation requirements'
-      'grading impact of late arrivals'
+      'threshold for low performers'
+      'exemption documentation requirements'
+      'consequences for entities below threshold'
     """
+    if not query.strip():
+        return "Policy query cannot be empty."
+    if len(query) > 500:
+        return f"Policy query too long ({len(query)} chars): maximum is 500."
     rag = _rag_store(config)
     if rag is None:
         return "Policy knowledge base not available."
@@ -245,6 +275,8 @@ def statistical_summary(
     of metric_rate across all groups. Useful for understanding spread and outliers.
     group_by: dimension to group by (leave empty for the default group dimension).
     """
+    if len(group_by) > 100:
+        return "Invalid group_by: must be 100 characters or fewer."
     store = _store(config)
     if store is None:
         return "No data store connected."
@@ -263,6 +295,8 @@ def detect_anomalies(
     deviations from the mean. Returns the anomalous rows with their z-scores.
     sigma: sensitivity threshold (default 2.0 — flags groups 2σ from the mean).
     """
+    if not 0.1 <= sigma <= 10.0:
+        return f"Invalid sigma {sigma}: must be between 0.1 and 10.0."
     store = _store(config)
     if store is None:
         return "No data store connected."
@@ -284,6 +318,8 @@ def get_top_n(
     ascending=True  → lowest metric_rate first (worst performers).
     ascending=False → highest metric_rate first (best performers).
     """
+    if not 1 <= n <= 50:
+        return f"Invalid n {n}: must be between 1 and 50."
     store = _store(config)
     if store is None:
         return "No data store connected."

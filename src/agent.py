@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 from langgraph.prebuilt import create_react_agent
 
+from .prompt_guard import check_token_budget
 from .security import ADMIN_USER, UserContext
 from .tools import ALL_TOOLS
 
@@ -51,11 +52,11 @@ Schema and policy retrieval:
 
 Dashboard rules (update_dashboard_view):
 - Call this when the user asks to see a chart, visual, or dashboard view
-- classes: list of segment names to focus on (omit or [] for all)
-- period:  'all' | 'last_7_days' | 'last_30_days'
-- view:    'overview' | 'group' | 'entity'
+- segments: list of segment names to focus on (omit or [] for all)
+- period:   'all' | 'last_7_days' | 'last_30_days'
+- view:     'overview' | 'group' | 'entity'
 - Examples:
-    update_dashboard_view(classes=["10A"], view="group")
+    update_dashboard_view(segments=["segment_a"], view="group")
     update_dashboard_view(period="last_30_days", view="overview")
 
 SQL query rules (run_sql_query):
@@ -71,7 +72,7 @@ an error.
 _TIMEOUT = 90
 
 _llm = ChatOllama(
-    model=os.environ.get("MODEL", "phi4:14b"),
+    model=os.environ.get("MODEL", "qwen2.5:14b"),
     base_url="http://localhost:11434",
     temperature=0.1,
     num_ctx=8192,
@@ -108,12 +109,18 @@ class ExcelsisAgent:
             if len(self._history) > self._max_history * 2:
                 self._history = self._history[-(self._max_history * 2):]
 
-    def ask(self, query: str, user: UserContext | None = None) -> str:
+    def _prepare(self, message: str, user: UserContext | None) -> tuple[dict, list]:
         user   = user or ADMIN_USER
         config = self._build_config(user)
         with self._history_lock:
-            messages = list(self._history[-self._max_history:]) + [HumanMessage(content=query)]
+            history       = list(self._history[-(self._max_history * 2):])
+            history_chars = sum(len(m.content) for m in history)
+            messages      = history[-self._max_history:] + [HumanMessage(content=message)]
+        check_token_budget(message, history_chars)
+        return config, messages
 
+    def ask(self, query: str, user: UserContext | None = None) -> str:
+        config, messages = self._prepare(query, user)
         result_q: queue.Queue = queue.Queue()
 
         def _run() -> None:
@@ -139,20 +146,7 @@ class ExcelsisAgent:
         return answer
 
     async def astream_events(self, message: str, user: UserContext | None = None):
-        """
-        Async generator yielding SSE-ready dicts.
-
-        Event types:
-          {"type": "token",     "content": "..."}
-          {"type": "tool_start","tool":    "..."}
-          {"type": "tool_end",  "tool":    "..."}
-          {"type": "dashboard_filter", "classes": [...], "period": "...", "view": "..."}
-          {"type": "error",     "message": "..."}
-        """
-        user   = user or ADMIN_USER
-        config = self._build_config(user)
-        with self._history_lock:
-            messages = list(self._history[-self._max_history:]) + [HumanMessage(content=message)]
+        config, messages = self._prepare(message, user)
         full = ""
 
         try:

@@ -45,22 +45,18 @@ class ExcelsisRAGStore:
     def policy_collection(self) -> Chroma:
         return self._policy_vs
 
-    def retrieve_schema(self, query: str) -> str:
-        cache_key = f"schema:{hash(query)}"
-        cached = self._cache.get(cache_key)
+    def _retrieve(self, prefix: str, vs, k: int, not_found: str, query: str) -> str:
+        key    = f"{prefix}:{hash(query)}"
+        cached = self._cache.get(key)
         if cached is not None:
             return cached
-        docs = self._schema_vs.similarity_search(query, k=self._schema_k)
-        result = "No schema information found." if not docs else "\n\n---\n\n".join(d.page_content for d in docs)
-        self._cache.set(cache_key, result)
+        docs   = vs.similarity_search(query, k=k)
+        result = not_found if not docs else "\n\n---\n\n".join(d.page_content for d in docs)
+        self._cache.set(key, result)
         return result
 
+    def retrieve_schema(self, query: str) -> str:
+        return self._retrieve("schema", self._schema_vs, self._schema_k, "No schema information found.", query)
+
     def retrieve_policy(self, query: str) -> str:
-        cache_key = f"policy:{hash(query)}"
-        cached = self._cache.get(cache_key)
-        if cached is not None:
-            return cached
-        docs = self._policy_vs.similarity_search(query, k=self._policy_k)
-        result = "No policy information found." if not docs else "\n\n---\n\n".join(d.page_content for d in docs)
-        self._cache.set(cache_key, result)
-        return result
+        return self._retrieve("policy", self._policy_vs, self._policy_k, "No policy information found.", query)

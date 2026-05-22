@@ -71,11 +71,12 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## Environment Setup
 
 ```bash
-ollama pull phi4:14b
+ollama pull qwen2.5:14b
 ollama pull nomic-embed-text
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.lock          # use the lock file for reproducible installs
+pip install -e ".[dev]"                   # adds faker (needed by scripts/seed_test_db.py)
 cd web && npm install && cd ..
 ```
 
@@ -90,7 +91,7 @@ Required `.env` variables:
 - `SQL_QUERY_TIMEOUT` — default `30`; per-query connection timeout in seconds
 
 Key optional variables:
-- `MODEL` — default `phi4:14b`; Ollama model used by the ReAct agent
+- `MODEL` — default `qwen2.5:14b`; Ollama model used by the ReAct agent
 - `AT_RISK_THRESHOLD` — default `75.0`
 - `ADMIN_PASSWORD` — default `admin123`; sets the initial admin password on first run
 
@@ -105,6 +106,23 @@ RAG / vector store config:
 - `CHROMA_PATH` — default `.chroma`; persistent ChromaDB directory
 - `EMBED_MODEL` — default `nomic-embed-text`; Ollama embedding model (must be pulled first)
 - `DOCS_PATH` — default `docs`; directory scanned for policy PDFs and Markdown files
+
+Prompt validation config:
+- `MAX_MESSAGE_LEN` — default `2000`; maximum characters in a single chat message
+- `MAX_PROMPT_TOKENS` — default `2048`; maximum estimated tokens (message + history) before rejection
+
+## Docker Test Database
+
+For local development without a production SQL Server:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+pip install faker                              # dev dependency — seeder only
+python scripts/seed_test_db.py --scale large   # ~5M rows across 34 tables
+cp .env.test .env                              # pre-filled Docker config
+```
+
+Databases created: `education_db` (16 tables) and `finance_db` (18 tables).
 
 ## Running the Stack
 
@@ -129,7 +147,7 @@ pytest tests/test_qa.py -v -m integration  # integration tests (requires Ollama)
 pytest tests/test_qa.py -v --run-all       # everything
 ```
 
-Unit tests (`TestZeroKnowledge`) call tools directly — no LLM involved, fast. Integration tests (`TestModelStress`) hit a live Ollama instance.
+Unit tests (`TestZeroKnowledge`, `TestPromptValidation`) call tools and guards directly — no LLM involved, fast. Integration tests (`TestModelStress`) hit a live Ollama instance.
 
 ## Jupyter Notebook
 
@@ -146,11 +164,19 @@ Run cells in order (1 → 9). To change the analyst identity, edit `CURRENT_USER
 
 ### Request flow
 
-Browser → React (`web/`) → FastAPI (`api/`) → `ExcelsisAgent` (`src/agent.py`) → LangGraph ReAct loop → tools (`src/tools.py`) → `SQLDataStore` (`src/sql_store.py`)
+Browser → React (`web/`) → FastAPI (`api/`) → `validate_message` / `check_token_budget` (`src/prompt_guard.py`) → `ExcelsisAgent` (`src/agent.py`) → LangGraph ReAct loop → tools (`src/tools.py`) → `SQLDataStore` (`src/sql_store.py`)
 
 For schema/policy questions, tools also call → `ExcelsisRAGStore` (`src/rag_store.py`) → ChromaDB vector search.
 
 The `/chat/stream` endpoint uses SSE (`StreamingResponse`); the frontend consumes `on_chat_model_stream`, `on_tool_start`, and `on_tool_end` events from LangGraph's `astream_events`.
+
+### Prompt validation (`src/prompt_guard.py`)
+
+Two functions gate every message before it reaches the agent:
+- `validate_message(message)` — strips whitespace, rejects empty strings, enforces `MAX_MESSAGE_LEN` (default 2000 chars), and scans for injection patterns (e.g. "ignore previous instructions", "jailbreak", "DAN"). Returns the stripped message or raises `ValueError`.
+- `check_token_budget(message, history_chars)` — estimates token count as `(len(message) + history_chars) // 4` and raises `ValueError` if it exceeds `MAX_PROMPT_TOKENS` (default 2048).
+
+Both are called in `api/routers/chat.py` before streaming and in `ExcelsisAgent.ask` / `astream_events` before the LangGraph loop.
 
 ### Security (`src/security.py`)
 

@@ -6,11 +6,12 @@ import uuid
 from datetime import timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-VALID_STATUSES = {"present", "absent", "late", "excused"}
+VALID_STATUSES = {"active", "inactive", "partial", "exempt"}
 _GLOB_PATTERNS = ("*.csv", "*.xlsx", "*.xls", "*.parquet")
 
 
@@ -73,9 +74,7 @@ class SampleDataStore:
         df["date"]        = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
         df["status"]      = df["status"].str.strip().str.lower()
         df                = df[df["status"].isin(VALID_STATUSES)].copy()
-        df["is_present"]  = df["status"] == "present"
-        df["is_absent"]   = df["status"] == "absent"
-        df["is_late"]     = df["status"] == "late"
+        df["is_positive"] = df["status"] == "active"
         df["week"]        = df["date"].dt.to_period("W").astype(str)
         df["month"]       = df["date"].dt.to_period("M").astype(str)
         df["day_of_week"] = df["date"].dt.day_name()
@@ -92,11 +91,11 @@ class SampleDataStore:
     def get_threshold_alerts(
         self,
         threshold: float = 75.0,
-        classes=None,
+        segments=None,
         date_from: str | None = None,
         date_to: str | None = None,
     ) -> pd.DataFrame:
-        cache_key = f"at_risk:{threshold}:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
+        cache_key = f"at_risk:{threshold}:{','.join(sorted(segments or []))}:{date_from or ''}:{date_to or ''}"
         cached = self._cache.get(cache_key)
         if cached is not None:
             return cached
@@ -104,8 +103,8 @@ class SampleDataStore:
         df = self.merged()
         if df.empty:
             return pd.DataFrame()
-        if classes and "class" in df.columns:
-            df = df[df["class"].isin(classes)]
+        if segments and "segment" in df.columns:
+            df = df[df["segment"].isin(segments)]
         if date_from:
             df = df[df["date"] >= pd.to_datetime(date_from)]
         if date_to:
@@ -114,30 +113,28 @@ class SampleDataStore:
             return pd.DataFrame()
 
         agg_cols: dict = {
-            "total":   ("status",     "count"),
-            "present": ("is_present", "sum"),
-            "absent":  ("is_absent",  "sum"),
-            "late":    ("is_late",    "sum"),
+            "total":    ("status",      "count"),
+            "positive": ("is_positive", "sum"),
         }
-        if "student_name" in df.columns:
-            agg_cols["name"] = ("student_name", "first")
-        if "class" in df.columns:
-            agg_cols["cls"] = ("class", "first")
-        agg = df.groupby("student_id").agg(**agg_cols).reset_index()
-        agg["attendance_rate"] = (agg["present"] / agg["total"] * 100).round(1)
-        result = agg[agg["attendance_rate"] < threshold].sort_values("attendance_rate")
+        if "entity_name" in df.columns:
+            agg_cols["name"] = ("entity_name", "first")
+        if "segment" in df.columns:
+            agg_cols["group_name"] = ("segment", "first")
+        agg = df.groupby("entity_id").agg(**agg_cols).reset_index()
+        agg["metric_rate"] = (agg["positive"] / agg["total"] * 100).round(1)
+        result = agg[agg["metric_rate"] < threshold].sort_values("metric_rate")
         self._cache.set(cache_key, result)
         return result
 
     def compute_stats(
         self,
-        group_by: str = "class",
+        group_by: str = "segment",
         period: str = "all",
-        classes=None,
+        segments=None,
         date_from: str | None = None,
         date_to: str | None = None,
     ) -> pd.DataFrame:
-        cache_key = f"stats:{group_by}:{period}:{','.join(sorted(classes or []))}:{date_from or ''}:{date_to or ''}"
+        cache_key = f"stats:{group_by}:{period}:{','.join(sorted(segments or []))}:{date_from or ''}:{date_to or ''}"
         cached = self._cache.get(cache_key)
         if cached is not None:
             return cached
@@ -145,8 +142,8 @@ class SampleDataStore:
         df = self.merged()
         if df.empty:
             return pd.DataFrame()
-        if classes and "class" in df.columns:
-            df = df[df["class"].isin(classes)]
+        if segments and "segment" in df.columns:
+            df = df[df["segment"].isin(segments)]
             if df.empty:
                 return pd.DataFrame()
 
@@ -156,7 +153,7 @@ class SampleDataStore:
             if date_to:
                 df = df[df["date"] <= pd.to_datetime(date_to)]
         else:
-            ref = df["date"].max()  # anchor to latest date in dataset, not wall clock
+            ref = df["date"].max()
             if period == "last_7_days":
                 df = df[df["date"] >= ref - timedelta(days=7)]
             elif period == "last_30_days":
@@ -168,37 +165,77 @@ class SampleDataStore:
         if df.empty:
             return pd.DataFrame()
 
-        col = group_by if group_by in df.columns else ("class" if "class" in df.columns else "student_id")
+        col = group_by if group_by in df.columns else ("segment" if "segment" in df.columns else "entity_id")
         g = df.groupby(col).agg(
-            total=("status",     "count"),
-            present=("is_present", "sum"),
-            absent=("is_absent",  "sum"),
-            late=("is_late",    "sum"),
+            total=("status",      "count"),
+            positive=("is_positive", "sum"),
         ).reset_index()
-        g["attendance_rate"] = (g["present"] / g["total"] * 100).round(1)
+        g["metric_rate"] = (g["positive"] / g["total"] * 100).round(1)
         self._cache.set(cache_key, g)
         return g
 
-    def student_weekly_rates(self, student_ids: list, weeks: int = 6) -> dict:
+    def entity_weekly_rates(self, entity_ids: list, weeks: int = 6) -> dict:
         df = self.merged()
-        if df.empty or not student_ids:
+        if df.empty or not entity_ids:
             return {}
-        df = df[df["student_id"].isin(student_ids)]
+        df = df[df["entity_id"].isin(entity_ids)]
         if df.empty:
             return {}
         all_weeks = sorted(df["week"].unique())[-weeks:]
         df = df[df["week"].isin(all_weeks)]
         grp = (
-            df.groupby(["student_id", "week"])
-            .agg(total=("status", "count"), present=("is_present", "sum"))
+            df.groupby(["entity_id", "week"])
+            .agg(total=("status", "count"), positive=("is_positive", "sum"))
             .reset_index()
         )
-        grp["rate"] = (grp["present"] / grp["total"] * 100).round(1)
-        pivot = grp.pivot(index="student_id", columns="week", values="rate").reindex(columns=all_weeks)
+        grp["rate"] = (grp["positive"] / grp["total"] * 100).round(1)
+        pivot = grp.pivot(index="entity_id", columns="week", values="rate").reindex(columns=all_weeks)
         return {
-            sid: [None if pd.isna(v) else float(v) for v in pivot.loc[sid]]
-            if sid in pivot.index else [None] * len(all_weeks)
-            for sid in student_ids
+            eid: [None if pd.isna(v) else float(v) for v in pivot.loc[eid]]
+            if eid in pivot.index else [None] * len(all_weeks)
+            for eid in entity_ids
+        }
+
+    def compute_statistical_summary(self, group_by: str = "") -> dict:
+        df = self.compute_stats(group_by)
+        if df.empty or "metric_rate" not in df.columns:
+            return {"error": "No data available."}
+        return df["metric_rate"].describe().round(1).to_dict()
+
+    def detect_anomalies(self, group_by: str = "", sigma: float = 2.0) -> pd.DataFrame:
+        df = self.compute_stats(group_by).copy()
+        if df.empty or "metric_rate" not in df.columns:
+            return pd.DataFrame()
+        mean = df["metric_rate"].mean()
+        std  = df["metric_rate"].std()
+        if std == 0:
+            return pd.DataFrame()
+        df["z_score"] = ((df["metric_rate"] - mean) / std).round(2)
+        return df[df["z_score"].abs() > sigma].sort_values("z_score").reset_index(drop=True)
+
+    def get_top_n(self, group_by: str = "", n: int = 10, ascending: bool = True) -> pd.DataFrame:
+        df = self.compute_stats(group_by)
+        if df.empty or "metric_rate" not in df.columns:
+            return pd.DataFrame()
+        return (
+            df.nsmallest(n, "metric_rate") if ascending
+            else df.nlargest(n, "metric_rate")
+        ).reset_index(drop=True)
+
+    def analyze_weekly_trend(self) -> dict:
+        df = self.compute_stats("week")
+        if df.empty or "metric_rate" not in df.columns or len(df) < 2:
+            return {"direction": "unknown", "slope_per_week": 0.0, "weeks": []}
+        df    = df.sort_values("week").reset_index(drop=True)
+        rates = df["metric_rate"].values.astype(float)
+        slope = float(np.polyfit(range(len(rates)), rates, 1)[0])
+        if   slope >  0.1: direction = "improving"
+        elif slope < -0.1: direction = "declining"
+        else:              direction = "stable"
+        return {
+            "direction":      direction,
+            "slope_per_week": round(slope, 2),
+            "weeks":          df.to_dict(orient="records"),
         }
 
     def summary(self) -> dict:
@@ -207,12 +244,12 @@ class SampleDataStore:
             return {"status": "no_data"}
         return {
             "total_records":         len(df),
-            "entity_count":          int(df["student_id"].nunique()),
+            "entity_count":          int(df["entity_id"].nunique()),
             "date_range": {
                 "from": str(df["date"].min().date()),
                 "to":   str(df["date"].max().date()),
             },
-            "metric_rate":           round(float(df["is_present"].mean() * 100), 1),
-            "below_threshold_count": int((~df["is_present"]).sum()),
-            "dimensions":            df["class"].unique().tolist() if "class" in df.columns else [],
+            "metric_rate":           round(float(df["is_positive"].mean() * 100), 1),
+            "below_threshold_count": int((~df["is_positive"]).sum()),
+            "dimensions":            df["segment"].unique().tolist() if "segment" in df.columns else [],
         }

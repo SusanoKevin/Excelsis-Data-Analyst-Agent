@@ -9,7 +9,8 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 - **Natural-language chat** — ask questions about Excelsis360 data in plain English; the analysis model reasons across multiple tools and streams the answer token-by-token
 - **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, ad-hoc SQL) and in what order
 - **RAG knowledge base** — ChromaDB vector store (`nomic-embed-text` embeddings via Ollama) indexes SQL schema metadata and policy documents; the agent uses `retrieve_schema` and `retrieve_policy` for accurate, grounded answers
-- **Two-model setup** — `phi4:14b` handles reasoning and tool calling; `nomic-embed-text` handles vector encoding for the RAG layer; both run fully locally via Ollama
+- **Two-model setup** — `qwen2.5:14b` handles reasoning and tool calling; `nomic-embed-text` handles vector encoding for the RAG layer; both run fully locally via Ollama
+- **Prompt guardrails** — every chat message is validated before reaching the agent: length cap (2000 chars), token-budget check, and injection-pattern detection
 - **SQL Server backend** — connects to one or more SQL Server databases; the agent can run ad-hoc T-SQL SELECT queries alongside structured tools
 - **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
 - **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, at-risk student table, and user management
@@ -24,7 +25,7 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 
 | Layer | Technology |
 |---|---|
-| LLM | `phi4:14b` via Ollama (`langchain-ollama`) |
+| LLM | `qwen2.5:14b` via Ollama (`langchain-ollama`) |
 | Agent | LangGraph ReAct (`create_react_agent`) |
 | Database | SQL Server via SQLAlchemy + `pyodbc` (ODBC Driver 18, `QueuePool`) |
 | Backend | FastAPI + Uvicorn |
@@ -56,9 +57,10 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 │   ├── security.py       # UserContext dataclass (user_id)
 │   ├── sql_store.py      # SQLDataStore — primary data backend (SQL Server via SQLAlchemy + pyodbc, pooled)
 │   ├── tools.py          # LangGraph tools (13 tools, all security-aware)
+│   ├── prompt_guard.py   # Input validation: length cap, token budget, injection patterns
 │   ├── rag_store.py      # ChromaDB collections for schema and policy vector search
 │   ├── rag_ingestor.py   # Ingests PDFs/Markdown from docs/ + auto-indexes SQL schema
-│   ├── agent.py          # ExcelsisAgent — LangGraph ReAct agent (phi4:14b)
+│   ├── agent.py          # ExcelsisAgent — LangGraph ReAct agent (qwen2.5:14b)
 │   └── mcp_server.py     # FastMCP server for Claude Code
 │
 ├── docs/                 # Policy documents scanned by rag_ingestor.py (.pdf and .md)
@@ -69,10 +71,15 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 │       ├── components/   # Sidebar, MessageBubble, ProtectedRoute
 │       └── api/client.ts # Axios instance + SSE streaming helper
 │
+├── docker/               # Local test infrastructure
+│   └── docker-compose.yml  # SQL Server 2022 container (education_db + finance_db)
+├── scripts/
+│   └── seed_test_db.py   # Seed script — populates education_db (16 tables) and finance_db (18 tables)
 ├── Excelsis.ipynb        # Interactive Jupyter notebook
 ├── start.sh              # Start both servers (backend :8000, frontend :5173)
 ├── requirements.lock     # Pinned Python dependencies (use this for installs)
-└── .env.example          # Environment variable template
+├── .env.example          # Environment variable template
+└── .env.test             # Pre-filled config for the Docker test database
 ```
 
 ---
@@ -84,7 +91,7 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 Download Ollama from [ollama.com](https://ollama.com) and pull the required model:
 
 ```bash
-ollama pull phi4:14b
+ollama pull qwen2.5:14b
 ollama pull nomic-embed-text
 ```
 
@@ -111,7 +118,7 @@ source .venv/bin/activate
 pip install -r requirements.lock
 ```
 
-> Ollama model weights are downloaded on first `ollama pull`. Subsequent starts are instant. `nomic-embed-text` is required for the RAG knowledge base; `phi4:14b` drives the ReAct agent.
+> Ollama model weights are downloaded on first `ollama pull`. Subsequent starts are instant. `nomic-embed-text` is required for the RAG knowledge base; `qwen2.5:14b` drives the ReAct agent.
 
 ### 4. Install frontend dependencies
 
@@ -140,7 +147,7 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `MODEL` | No | `phi4:14b` | Ollama model for the ReAct agent |
+| `MODEL` | No | `qwen2.5:14b` | Ollama model for the ReAct agent |
 | `SQL_SERVER` | Yes | — | SQL Server hostname or IP |
 | `SQL_DATABASES` | Yes | — | Comma-separated list of databases to expose |
 | `SQL_PRIMARY_DB` | No | first in list | Default database for queries |
@@ -163,6 +170,35 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 | `CHROMA_PATH` | No | `.chroma` | Persistent ChromaDB directory path |
 | `EMBED_MODEL` | No | `nomic-embed-text` | Ollama embedding model for RAG |
 | `DOCS_PATH` | No | `docs` | Directory scanned for policy documents |
+| `MAX_MESSAGE_LEN` | No | `2000` | Maximum characters allowed in a single chat message |
+| `MAX_PROMPT_TOKENS` | No | `2048` | Maximum estimated tokens (message + history) before rejection |
+
+---
+
+## Docker Test Database
+
+For local development and integration testing without a production SQL Server, a Docker-based SQL Server 2022 instance is provided with two pre-seeded databases.
+
+```bash
+# Start the container (first run downloads ~1.5 GB image)
+docker compose -f docker/docker-compose.yml up -d
+
+# Install the seeding dependency (one-time)
+pip install faker
+
+# Seed both databases — choose a scale tier
+python scripts/seed_test_db.py --scale small   # ~100K rows, fast
+python scripts/seed_test_db.py --scale medium  # ~1M rows
+python scripts/seed_test_db.py --scale large   # ~5M rows across 34 tables, ~5–10 min
+
+# Use the pre-filled config
+cp .env.test .env
+```
+
+| Database | Tables | Purpose |
+|---|---|---|
+| `education_db` | 16 | Attendance, students, teachers, grades, subjects |
+| `finance_db` | 18 | Transactions, invoices, purchase orders, budgets, expenses |
 
 ---
 
@@ -170,7 +206,7 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 
 All models run locally via [Ollama](https://ollama.com). No API keys or internet access required at inference time.
 
-### LLM — `phi4:14b`
+### LLM — `qwen2.5:14b`
 
 Drives the LangGraph ReAct loop via `ChatOllama`. Handles both tool calling (data queries, at-risk identification, dashboard requests, knowledge-base lookups) and direct conversational replies in a single unified pipeline.
 

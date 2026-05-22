@@ -1,9 +1,3 @@
-"""
-Generate Excelsis 360 documentation PDF using ReportLab.
-Run: python generate_docs.py
-Output: Excelsis_360_Documentation.pdf
-"""
-
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
@@ -13,8 +7,6 @@ from reportlab.platypus import (
     HRFlowable, PageBreak, KeepTogether, Preformatted,
 )
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
-from reportlab.platypus import ListFlowable, ListItem
-
 # ── Colour palette ────────────────────────────────────────────────────────────
 CARBON     = colors.HexColor("#0d0d0d")
 SNOW       = colors.HexColor("#ffffff")
@@ -266,7 +258,7 @@ def build():
     story.append(body(
         "The Excelsis 360 Data Analyst Agent is a full-stack AI analyst built for the Excelsis 360 "
         "platform. It extends the platform's existing data infrastructure with a reasoning AI layer — "
-        "combining a locally-hosted LLM (phi4:14b via Ollama), direct access to SQL Server data, a "
+        "combining a locally-hosted LLM (qwen2.5:14b via Ollama), direct access to SQL Server data, a "
         "ChromaDB RAG layer for schema and policy retrieval, and a dedicated web interface — to give "
         "staff a conversational way to interrogate data without writing reports or navigating dashboards."
     ))
@@ -430,7 +422,7 @@ def build():
         ["2. HTTP/SSE", "Fetch / Axios", "Browser Fetch API", "POST /chat/stream → EventSource-style reader"],
         ["3. API Gateway", "FastAPI", "Python / Uvicorn", "JWT validation, rate limiting, request routing"],
         ["4. Agent", "ExcelsisAgent", "LangGraph ReAct", "Maintains conversation history, streams LLM events"],
-        ["5. LLM", "phi4:14b", "Ollama / ChatOllama", "Reasons about which tools to call and in what order"],
+        ["5. LLM", "qwen2.5:14b", "Ollama / ChatOllama", "Reasons about which tools to call and in what order"],
         ["6. Tools", "13 LangGraph tools", "Python functions", "SQL queries, stats, RAG retrieval, anomaly detection, trend analysis"],
         ["7. Data Store", "SQLDataStore", "pyodbc / SQL Server", "Read-only T-SQL queries with TTL cache"],
         ["8. Database", "SQL Server", "ODBC Driver 18", "Primary attendance table + optional extra databases"],
@@ -455,7 +447,7 @@ FastAPI (:8000)
   └── /data/*        Direct SQLDataStore queries (no LLM)
 
 ExcelsisAgent  (LangGraph ReAct)
-  ├── ChatOllama ─── phi4:14b @ http://localhost:11434
+  ├── ChatOllama ─── qwen2.5:14b @ http://localhost:11434
   ├── Conversation history (last 10 turns)
   └── 13 tools ─────────────────────────────────────────────────────────┐
                                                                         │
@@ -512,7 +504,7 @@ MCP Server (stdio)
     story.append(sp(6))
 
     stack = [
-        ["phi4:14b", "Ollama", "LLM", "14B parameter model; strong tool-calling and instruction-following; fits on a single consumer GPU or Apple Silicon Mac"],
+        ["qwen2.5:14b", "Ollama", "LLM", "14B parameter model; strong tool-calling and instruction-following; fits on a single consumer GPU or Apple Silicon Mac"],
         ["LangGraph", "langgraph", "Agent framework", "ReAct loop with built-in conversation state, tool routing, and async event streaming"],
         ["langchain-ollama", "langchain-ollama", "LLM bridge", "ChatOllama wraps Ollama's HTTP API with LangChain's standard interface"],
         ["FastAPI", "fastapi", "Web framework", "Async, schema-validated, auto-docs; minimal boilerplate for REST + SSE"],
@@ -648,7 +640,7 @@ MCP Server (stdio)
 
     story.append(body(
         "ExcelsisAgent is the intelligence layer of Excelsis 360. It wraps a LangGraph ReAct "
-        "(Reasoning + Acting) agent powered by phi4:14b running locally via Ollama. The agent "
+        "(Reasoning + Acting) agent powered by qwen2.5:14b running locally via Ollama. The agent "
         "decides which tools to call, in what order, based on the user's question and the "
         "results of previous tool calls."
     ))
@@ -664,7 +656,7 @@ MCP Server (stdio)
 """User message
     │
     ▼
-LLM node  (phi4:14b)
+LLM node  (qwen2.5:14b)
     │ Decides to call a tool?
     ├── YES ──► Tools node  (runs the tool, returns result)
     │               │
@@ -717,7 +709,7 @@ LLM node  (phi4:14b)
     story += section("6.5  LLM Configuration")
     story.append(body("The ChatOllama instance is configured with:"))
     llm_config = [
-        ["model", "phi4:14b (default; overridden by MODEL env var)"],
+        ["model", "qwen2.5:14b (default; overridden by MODEL env var)"],
         ["base_url", "http://localhost:11434 (Ollama's default port)"],
         ["temperature", "0.1 (low temperature for consistent, factual responses)"],
         ["num_ctx", "8192 tokens context window"],
@@ -1172,7 +1164,7 @@ CURRENT_USER = UserContext(user_id="admin")"""
         ["SQL_DRIVER", "No", "{ODBC Driver 18 for SQL Server}", "ODBC driver string"],
         ["JWT_SECRET", "Yes (prod)", "change-me-in-production", "Secret key for JWT signing — MUST be changed in production"],
         ["ADMIN_PASSWORD", "No", "admin123", "Initial password for the admin account (only used on first startup)"],
-        ["MODEL", "No", "phi4:14b", "Ollama model name for the ReAct agent"],
+        ["MODEL", "No", "qwen2.5:14b", "Ollama model name for the ReAct agent"],
         ["AT_RISK_THRESHOLD", "No", "75.0", "Default metric percentage threshold for at-risk flagging"],
         ["MCP_USER_ID", "No", "mcp_user", "Username used by the MCP server process"],
         ["PRIMARY_TABLE", "No", "attendance", "Primary SQL table the agent queries"],
@@ -1243,7 +1235,7 @@ CURRENT_USER = UserContext(user_id="admin")"""
     story += section("15.2  First-Time Setup")
     story.append(code_block(
 """# 1. Pull the models (one-time downloads)
-ollama pull phi4:14b          # ~8GB — ReAct agent
+ollama pull qwen2.5:14b          # ~8GB — ReAct agent
 ollama pull nomic-embed-text  # ~270MB — RAG embeddings
 
 # 2. Copy and configure environment
@@ -1295,7 +1287,7 @@ cd web && npm run dev"""
     story.append(code_block(
 """────────────────────────────────────────────────────
   Excelsis 360 — startup
-  Model:      phi4:14b                 OK
+  Model:      qwen2.5:14b                 OK
   SQL Server: myserver                 OK
   Databases:  attendance_db,reports_db
 ────────────────────────────────────────────────────"""
@@ -1334,7 +1326,7 @@ cd web && npm run dev"""
 
     story += section("16.2  Integration Tests — TestModelStress")
     story.append(body(
-        "These tests require a live Ollama instance with phi4:14b loaded. They verify:"
+        "These tests require a live Ollama instance with qwen2.5:14b loaded. They verify:"
     ))
     story += bullet_list([
         "A multi-part complex query completes within 120 seconds and returns >50 characters",

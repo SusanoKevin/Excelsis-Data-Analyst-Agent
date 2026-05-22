@@ -33,7 +33,7 @@ def ingest_schemas(
     collection = store.schema_collection()
     added = 0
 
-    for db in sql_store._databases:
+    for db in sql_store.databases:
         try:
             df = sql_store._query(
                 """

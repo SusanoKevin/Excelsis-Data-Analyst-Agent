@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "excelsis-data-agent"
@@ -25,12 +25,18 @@ dependencies = [
     "bcrypt>=4.0.0",
     # Data
     "pandas>=2.0.0",
-    "openpyxl>=3.1.0",
-    "pyarrow>=14.0.0",
+    "sqlalchemy>=2.0.0",
     # SQL Server
     "pyodbc>=5.0.0",
     "sqlglot>=25.0.0",
     # Utilities
     "python-dotenv>=1.0.0",
     "slowapi>=0.1.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "faker>=25.0.0",
+    "openpyxl>=3.1.0",
+    "pyarrow>=14.0.0",
 ]

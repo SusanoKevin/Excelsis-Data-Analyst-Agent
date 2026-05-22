@@ -27,9 +27,12 @@ logger = logging.getLogger(__name__)
 
 
 def _validate_startup(store: SQLDataStore) -> None:
-    model  = os.environ.get("MODEL", "phi4:14b")
+    model  = os.environ.get("MODEL", "qwen2.5:14b")
     server = os.environ.get("SQL_SERVER", "<not set>")
-    dbs    = os.environ.get("SQL_DATABASES", store._primary_db)
+    dbs    = os.environ.get("SQL_DATABASES", store.primary_db)
+
+    if os.environ.get("JWT_SECRET", "change-me-in-production") == "change-me-in-production":
+        logger.warning("SECURITY: JWT_SECRET is the default — set JWT_SECRET in .env before production use")
 
     ollama_ok = False
     try:
@@ -38,12 +41,9 @@ def _validate_startup(store: SQLDataStore) -> None:
     except Exception:
         logger.warning("Ollama not reachable at http://localhost:11434 — agent responses will fail")
 
-    sql_ok = False
-    try:
-        store._query("SELECT 1")
-        sql_ok = True
-    except Exception as e:
-        logger.error("SQL Server check failed: %s", e)
+    sql_ok = store.ping()
+    if not sql_ok:
+        logger.error("SQL Server check failed — verify SQL_SERVER and credentials in .env")
 
     logger.info("Excelsis 360 startup | model=%s (%s) | sql=%s (%s) | dbs=%s",
                 model, "OK" if ollama_ok else "UNREACHABLE",

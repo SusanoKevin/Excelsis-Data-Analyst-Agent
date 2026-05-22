@@ -1,8 +1,3 @@
-"""
-Excelsis 360 MCP server. Identity is set at process start via env var:
-  MCP_USER_ID — default "mcp_user"
-"""
-
 from __future__ import annotations
 
 import json
@@ -45,10 +40,10 @@ mcp = FastMCP(
 @mcp.tool()
 def ask_analyst(query: str) -> str:
     """
-    Ask the Excelsis data analyst a natural-language question.
+    Ask the data analyst a natural-language question.
     The agent will reason across multiple tools and return a comprehensive answer.
     Examples: 'Which group has the worst metric rate?',
-              'Show me threshold alerts in 10A',
+              'Show me entities below the threshold',
               'What are the top 5 groups by metric rate this month?'
     """
     return agent.ask(query, user=MCP_USER)
@@ -76,7 +71,7 @@ def threshold_alerts(threshold: float = 75.0) -> str:
 
 
 @mcp.tool()
-def group_statistics(group_by: str = "class", period: str = "all") -> str:
+def group_statistics(group_by: str = "", period: str = "all") -> str:
     """
     Return metric statistics grouped by a configured dimension.
     group_by: leave empty for default, or specify 'week', 'month', 'day_of_week', or any configured group column.
@@ -91,7 +86,7 @@ def schema_lookup(query: str) -> str:
     """
     Look up database table and column definitions from the schema knowledge base.
     Use before writing SQL to verify table names, column names, and data types.
-    Examples: 'primary table columns', 'enrollment_db schema'
+    Examples: 'primary table columns', 'list all configured databases'
     """
     return rag_store.retrieve_schema(query)
 
@@ -101,7 +96,7 @@ def knowledge_lookup(query: str) -> str:
     """
     Search policy and rule documents from the knowledge base.
     Use for questions about thresholds, consequences, exemptions, or procedures.
-    Examples: 'threshold for probation', 'excused absence policy'
+    Examples: 'threshold for low performers', 'exemption policy'
     """
     return rag_store.retrieve_policy(query)
 
