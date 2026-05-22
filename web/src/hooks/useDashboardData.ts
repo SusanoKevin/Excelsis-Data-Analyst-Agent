@@ -53,8 +53,8 @@ function deriveThresholdBreakdown(groupStats: GroupStat[]): StatusCount[] {
 
 function buildParams(filter: DashboardFilter): Record<string, string> {
   const params: Record<string, string> = {
-    classes: filter.classes.join(','),
-    period:  filter.period,
+    segments: filter.classes.join(','),
+    period:   filter.period,
   }
   if (filter.period === 'custom') {
     if (filter.date_from) params.date_from = filter.date_from
@@ -77,7 +77,7 @@ export function useDashboardData(filter: DashboardFilter): DashboardData {
 
     Promise.all([
       api.get('/data/summary',  { signal }),
-      api.get('/data/stats',    { params: { ...params, group_by: 'class'       }, signal }),
+      api.get('/data/stats',    { params, signal }),
       api.get('/data/stats',    { params: { ...params, group_by: 'week'        }, signal }),
       api.get('/data/stats',    { params: { ...params, group_by: 'day_of_week' }, signal }),
       api.get('/data/alerts',   { params: { ...params, threshold: 75 }, signal }),
@@ -107,7 +107,7 @@ export function useDashboardData(filter: DashboardFilter): DashboardData {
             .catch(() => {})
         }
 
-        api.get('/data/trends', { params: { classes: params.classes }, signal })
+        api.get('/data/trends', { params: { segments: params.segments }, signal })
           .then((r) => { if (!signal.aborted) setData((d) => ({ ...d, trends: r.data })) })
           .catch(() => {})
       })

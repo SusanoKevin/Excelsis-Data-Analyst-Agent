@@ -1,4 +1,6 @@
-import { DashboardFilterEvent, Message } from '../types'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { DashboardFilterEvent, Message, ToolTable } from '../types'
 
 const TOOL_LABELS: Record<string, string> = {
   query_data:            'Querying data…',
@@ -8,6 +10,40 @@ const TOOL_LABELS: Record<string, string> = {
   run_sql_query:         'SQL query',
   compare_periods:       'Period comparison',
   compare_segments:      'Comparing segments…',
+}
+
+function DataTable({ table }: { table: ToolTable }) {
+  return (
+    <div className="mt-3 overflow-x-auto rounded-[10px] border border-arctic-mist text-xs">
+      <table className="w-full text-left">
+        <thead className="bg-fog">
+          <tr>
+            {table.columns.map((col) => (
+              <th key={col} className="px-3 py-2 text-pewter uppercase tracking-wider font-medium whitespace-nowrap">
+                {col}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, i) => (
+            <tr key={i} className={i % 2 === 0 ? 'bg-snow' : 'bg-fog'}>
+              {row.map((cell, j) => (
+                <td key={j} className="px-3 py-2 text-carbon font-mono whitespace-nowrap">
+                  {cell === null || cell === undefined ? '' : String(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {table.truncated && (
+        <p className="px-3 py-2 text-pewter border-t border-arctic-mist">
+          Showing 50 of {table.total_rows} rows
+        </p>
+      )}
+    </div>
+  )
 }
 
 function buildDashboardUrl(f: DashboardFilterEvent): string {
@@ -42,14 +78,52 @@ export default function MessageBubble({ msg }: Props) {
         )}
 
         <div
-          className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+          className={`px-4 py-3 text-sm leading-relaxed ${
             isUser
-              ? 'bg-carbon text-white rounded-2xl rounded-tr-sm'
+              ? 'bg-carbon text-white rounded-2xl rounded-tr-sm whitespace-pre-wrap'
               : 'bg-fog text-carbon rounded-2xl rounded-tl-sm border border-arctic-mist'
           } ${msg.isStreaming ? 'cursor-blink' : ''}`}
         >
-          {msg.content || (msg.isStreaming ? '' : '…')}
+          {isUser ? (
+            msg.content || ''
+          ) : (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                table: ({ children }) => (
+                  <div className="overflow-x-auto rounded-[10px] border border-arctic-mist text-xs my-2">
+                    <table className="w-full text-left">{children}</table>
+                  </div>
+                ),
+                thead: ({ children }) => <thead className="bg-arctic-mist">{children}</thead>,
+                th: ({ children }) => (
+                  <th className="px-3 py-2 text-pewter uppercase tracking-wider font-medium whitespace-nowrap">
+                    {children}
+                  </th>
+                ),
+                td: ({ children }) => (
+                  <td className="px-3 py-2 text-carbon font-mono whitespace-nowrap border-t border-arctic-mist">
+                    {children}
+                  </td>
+                ),
+                code: ({ children }) => (
+                  <code className="bg-arctic-mist text-carbon font-mono text-xs px-1.5 py-0.5 rounded">
+                    {children}
+                  </code>
+                ),
+                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+              }}
+            >
+              {msg.content || (msg.isStreaming ? '' : '…')}
+            </ReactMarkdown>
+          )}
         </div>
+
+        {!isUser && msg.toolData && msg.toolData.length > 0 && (
+          <div>
+            {msg.toolData.map((t, i) => <DataTable key={i} table={t} />)}
+          </div>
+        )}
 
         {!isUser && msg.dashboardFilter && (
           <div className="mt-3">

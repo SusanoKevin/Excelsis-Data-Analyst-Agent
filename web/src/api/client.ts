@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { DashboardFilterEvent } from '../types'
+import { DashboardFilterEvent, ToolTable } from '../types'
 
 const api = axios.create({ baseURL: '/' })
 
@@ -24,12 +24,13 @@ export default api
 
 export async function streamChat(
   message: string,
-  onToken:           (t: string) => void,
-  onToolStart:       (tool: string) => void,
-  onToolEnd:         (tool: string) => void,
-  onDone:            () => void,
-  onError:           (msg: string) => void,
+  onToken:            (t: string) => void,
+  onToolStart:        (tool: string) => void,
+  onToolEnd:          (tool: string) => void,
+  onDone:             () => void,
+  onError:            (msg: string) => void,
   onDashboardFilter?: (f: DashboardFilterEvent) => void,
+  onToolData?:        (t: ToolTable) => void,
 ) {
   const token = localStorage.getItem('token')
   const res = await fetch('/chat/stream', {
@@ -71,6 +72,13 @@ export async function streamChat(
           classes: evt.classes ?? [],
           period:  evt.period  ?? 'all',
           view:    evt.view    ?? 'overview',
+        })
+        else if (evt.type === 'tool_data') onToolData?.({
+          tool:       evt.tool,
+          columns:    evt.columns    ?? [],
+          rows:       evt.rows       ?? [],
+          truncated:  evt.truncated  ?? false,
+          total_rows: evt.total_rows ?? 0,
         })
       } catch { /* ignore malformed SSE lines */ }
     }

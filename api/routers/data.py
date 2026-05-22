@@ -7,6 +7,8 @@ from src.security import UserContext
 def _call(fn):
     try:
         return fn()
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:

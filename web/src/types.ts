@@ -52,12 +52,21 @@ export interface StatusCount {
 
 // ── Messaging ─────────────────────────────────────────────────────────────────
 
+export interface ToolTable {
+  tool:       string
+  columns:    string[]
+  rows:       (string | number | null)[][]
+  truncated:  boolean
+  total_rows: number
+}
+
 export interface Message {
   role:             'user' | 'assistant'
   content:          string
   toolsUsed:        string[]
   isStreaming?:     boolean
   dashboardFilter?: DashboardFilterEvent
+  toolData?:        ToolTable[]
 }
 
 // ── API response shapes ───────────────────────────────────────────────────────

@@ -258,6 +258,8 @@ class SQLDataStore:
         {segment_clause}
         GROUP BY {col_expr}
         """, params=tuple(params))
+        if group_by in self._group_cols and col_alias != "class":
+            result = result.rename(columns={col_alias: "class"})
         self._cache.set(cache_key, result)
         return result
 

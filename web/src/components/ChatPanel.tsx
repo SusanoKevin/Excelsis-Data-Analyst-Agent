@@ -14,11 +14,17 @@ interface Props {
 export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter }: Props) {
   const { messages, streaming, send, clearHistory } = useChat(onDashboardFilter)
   const [input, setInput] = useState('')
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const bottomRef   = useRef<HTMLDivElement>(null)
+  const scrollRef   = useRef<HTMLDivElement>(null)
   const suggestions = buildSuggestions(atRisk, summary)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = scrollRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (distanceFromBottom < 120) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
   const handleSend = (text: string) => {
@@ -60,6 +66,7 @@ export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter 
       </div>
 
       <div
+        ref={scrollRef}
         className="flex-1 overflow-y-auto px-4 py-4"
         aria-live="polite"
         aria-label="Conversation"

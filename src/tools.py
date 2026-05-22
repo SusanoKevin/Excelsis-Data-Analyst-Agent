@@ -18,6 +18,17 @@ def _df_to_text(df: pd.DataFrame, max_rows: int = 50) -> str:
     return df.head(max_rows).to_string(index=False)
 
 
+def _df_to_artifact(df: pd.DataFrame, max_rows: int = 50) -> dict:
+    trimmed = df.head(max_rows)
+    data = json.loads(trimmed.to_json(orient="split"))
+    return {
+        "columns":    data["columns"],
+        "rows":       data["data"],
+        "truncated":  len(df) > max_rows,
+        "total_rows": len(df),
+    }
+
+
 def _store(config: RunnableConfig):
     return config["configurable"].get("store")
 
@@ -26,12 +37,12 @@ def _rag_store(config: RunnableConfig):
     return config["configurable"].get("rag_store")
 
 
-@tool
+@tool(response_format="content_and_artifact")
 def query_data(
     group_by: str = "",
     period:   str = "all",
     config:   RunnableConfig = None,
-) -> str:
+) -> tuple[str, dict]:
     """
     Return metric statistics grouped by a configured dimension.
     group_by: dimension to group by — leave empty for the default group dimension,
@@ -39,36 +50,36 @@ def query_data(
     period:   'all' | 'last_7_days' | 'last_30_days'
     """
     if period not in _VALID_PERIODS:
-        return f"Invalid period '{period}': must be one of 'all', 'last_7_days', 'last_30_days'."
+        return f"Invalid period '{period}': must be one of 'all', 'last_7_days', 'last_30_days'.", {}
     if len(group_by) > 100:
-        return "Invalid group_by: must be 100 characters or fewer."
+        return "Invalid group_by: must be 100 characters or fewer.", {}
     store = _store(config)
     if store is None:
-        return "No data store connected."
+        return "No data store connected.", {}
 
     df = store.compute_stats(group_by, period)
-    return _df_to_text(df)
+    return _df_to_text(df), _df_to_artifact(df)
 
 
-@tool
+@tool(response_format="content_and_artifact")
 def get_threshold_alerts(
     threshold: float = 75.0,
     config: RunnableConfig = None,
-) -> str:
+) -> tuple[str, dict]:
     """
     Return entities whose metric rate is below the given threshold (default 75%).
     Includes entity ID, label (if available), group, and metric rate.
     """
     if not 0.0 <= threshold <= 100.0:
-        return f"Invalid threshold {threshold}: must be between 0.0 and 100.0."
+        return f"Invalid threshold {threshold}: must be between 0.0 and 100.0.", {}
     store = _store(config)
     if store is None:
-        return "No data store connected."
+        return "No data store connected.", {}
 
     df = store.get_threshold_alerts(threshold=threshold)
     if df.empty:
-        return f"No entities below {threshold}% metric threshold."
-    return _df_to_text(df)
+        return f"No entities below {threshold}% metric threshold.", {}
+    return _df_to_text(df), _df_to_artifact(df)
 
 
 @tool
@@ -107,12 +118,12 @@ def update_dashboard_view(
     return json.dumps({"segments": segments or [], "period": safe_period, "view": safe_view})
 
 
-@tool
+@tool(response_format="content_and_artifact")
 def run_sql_query(
     sql: str,
     database: str = "",
     config: RunnableConfig = None,
-) -> str:
+) -> tuple[str, dict]:
     """
     Execute an ad-hoc T-SQL SELECT query against a named database.
     Only SELECT statements are permitted — DML and DDL are blocked.
@@ -125,12 +136,12 @@ def run_sql_query(
     Always call retrieve_schema first to confirm table and column names.
     """
     if not sql.strip():
-        return "SQL query cannot be empty."
+        return "SQL query cannot be empty.", {}
     if len(sql) > 5000:
-        return f"SQL query too long ({len(sql)} chars): maximum is 5000."
+        return f"SQL query too long ({len(sql)} chars): maximum is 5000.", {}
     store = _store(config)
     if store is None:
-        return "No data store connected."
+        return "No data store connected.", {}
 
     sql_clean = sql.strip().rstrip(";")
     if not re.search(r"\bTOP\s+\d+\b", sql_clean, re.IGNORECASE):
@@ -139,21 +150,21 @@ def run_sql_query(
     try:
         df = store._query(sql_clean, database=database or None)
     except PermissionError as e:
-        return f"Query blocked: {e}"
+        return f"Query blocked: {e}", {}
     except Exception as e:
-        return f"Query failed: {e}"
+        return f"Query failed: {e}", {}
 
     if df.empty:
-        return "Query returned no rows."
-    return _df_to_text(df, max_rows=200)
+        return "Query returned no rows.", {}
+    return _df_to_text(df, max_rows=200), _df_to_artifact(df, max_rows=200)
 
 
-@tool
+@tool(response_format="content_and_artifact")
 def compare_periods(
     period_a: str = "last_7_days",
     period_b: str = "last_30_days",
     config: RunnableConfig = None,
-) -> str:
+) -> tuple[str, dict]:
     """
     Compare metric rates between two time periods across all groups.
     Returns a side-by-side table with a delta column.
@@ -161,18 +172,18 @@ def compare_periods(
     Example: compare_periods(period_a='last_7_days', period_b='last_30_days')
     """
     if period_a not in _VALID_PERIODS:
-        return f"Invalid period_a '{period_a}': must be one of 'all', 'last_7_days', 'last_30_days'."
+        return f"Invalid period_a '{period_a}': must be one of 'all', 'last_7_days', 'last_30_days'.", {}
     if period_b not in _VALID_PERIODS:
-        return f"Invalid period_b '{period_b}': must be one of 'all', 'last_7_days', 'last_30_days'."
+        return f"Invalid period_b '{period_b}': must be one of 'all', 'last_7_days', 'last_30_days'.", {}
     store = _store(config)
     if store is None:
-        return "No data store connected."
+        return "No data store connected.", {}
 
     df_a = store.compute_stats("", period_a)
     df_b = store.compute_stats("", period_b)
 
     if df_a.empty and df_b.empty:
-        return "No data available for either period."
+        return "No data available for either period.", {}
 
     dim = df_a.columns[0] if not df_a.empty else df_b.columns[0]
     df_a = df_a[[dim, "metric_rate"]].rename(columns={"metric_rate": f"rate_{period_a}"})
@@ -182,32 +193,32 @@ def compare_periods(
     delta  = (merged[f"rate_{period_b}"] - merged[f"rate_{period_a}"]).round(1)
     merged["delta"] = delta.apply(lambda d: f"+{d}" if d > 0 else str(d))
 
-    return _df_to_text(merged)
+    return _df_to_text(merged), _df_to_artifact(merged)
 
 
-@tool
+@tool(response_format="content_and_artifact")
 def compare_segments(
     segment_a: str,
     segment_b: str,
     config: RunnableConfig = None,
-) -> str:
+) -> tuple[str, dict]:
     """
     Compare metric statistics for two specific segments side by side.
     Returns total, positive_count, and metric_rate for each segment.
     Example: compare_segments(segment_a='segment_a', segment_b='segment_b')
     """
     if not segment_a or len(segment_a) > 100:
-        return "Invalid segment_a: must be a non-empty string of at most 100 characters."
+        return "Invalid segment_a: must be a non-empty string of at most 100 characters.", {}
     if not segment_b or len(segment_b) > 100:
-        return "Invalid segment_b: must be a non-empty string of at most 100 characters."
+        return "Invalid segment_b: must be a non-empty string of at most 100 characters.", {}
     store = _store(config)
     if store is None:
-        return "No data store connected."
+        return "No data store connected.", {}
 
     df = store.compute_stats("", "all", segments=[segment_a, segment_b])
     if df.empty:
-        return f"No data found for segments '{segment_a}' or '{segment_b}'."
-    return _df_to_text(df)
+        return f"No data found for segments '{segment_a}' or '{segment_b}'.", {}
+    return _df_to_text(df), _df_to_artifact(df)
 
 
 @tool
@@ -284,49 +295,49 @@ def statistical_summary(
     return json.dumps(result, indent=2)
 
 
-@tool
+@tool(response_format="content_and_artifact")
 def detect_anomalies(
     group_by: str   = "",
     sigma:    float = 2.0,
     config:   RunnableConfig = None,
-) -> str:
+) -> tuple[str, dict]:
     """
     Identify groups/entities whose metric_rate deviates more than sigma standard
     deviations from the mean. Returns the anomalous rows with their z-scores.
     sigma: sensitivity threshold (default 2.0 — flags groups 2σ from the mean).
     """
     if not 0.1 <= sigma <= 10.0:
-        return f"Invalid sigma {sigma}: must be between 0.1 and 10.0."
+        return f"Invalid sigma {sigma}: must be between 0.1 and 10.0.", {}
     store = _store(config)
     if store is None:
-        return "No data store connected."
+        return "No data store connected.", {}
     df = store.detect_anomalies(group_by, sigma)
     if df.empty:
-        return f"No anomalies detected beyond {sigma}σ from the mean."
-    return _df_to_text(df)
+        return f"No anomalies detected beyond {sigma}σ from the mean.", {}
+    return _df_to_text(df), _df_to_artifact(df)
 
 
-@tool
+@tool(response_format="content_and_artifact")
 def get_top_n(
     group_by:  str  = "",
     n:         int  = 10,
     ascending: bool = True,
     config:    RunnableConfig = None,
-) -> str:
+) -> tuple[str, dict]:
     """
     Return the top or bottom N groups ranked by metric_rate.
     ascending=True  → lowest metric_rate first (worst performers).
     ascending=False → highest metric_rate first (best performers).
     """
     if not 1 <= n <= 50:
-        return f"Invalid n {n}: must be between 1 and 50."
+        return f"Invalid n {n}: must be between 1 and 50.", {}
     store = _store(config)
     if store is None:
-        return "No data store connected."
+        return "No data store connected.", {}
     df = store.get_top_n(group_by, n, ascending)
     if df.empty:
-        return "No data available."
-    return _df_to_text(df)
+        return "No data available.", {}
+    return _df_to_text(df), _df_to_artifact(df)
 
 
 @tool

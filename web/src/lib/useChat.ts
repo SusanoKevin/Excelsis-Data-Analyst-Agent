@@ -58,6 +58,12 @@ export function useChat(onDashboardFilter?: (f: DashboardFilterEvent) => void) {
       () => { updateLast({ isStreaming: false }); setStreaming(false) },
       (msg) => { updateLast({ content: msg, isStreaming: false }); setStreaming(false) },
       (f) => { updateLast({ dashboardFilter: f }); onDashboardFilter?.(f) },
+      (table) => setMessages((prev) => {
+        const msgs = [...prev]
+        const last = msgs[msgs.length - 1]
+        msgs[msgs.length - 1] = { ...last, toolData: [...(last.toolData ?? []), table] }
+        return msgs
+      }),
     )
   }
 

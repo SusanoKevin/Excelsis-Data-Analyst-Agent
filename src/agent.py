@@ -42,6 +42,7 @@ Analytical approach:
 - "What's wrong?" or "Where are issues?": start with detect_anomalies, then get_top_n(ascending=True)
 - "Show the trend" or "Is it getting better/worse?": use analyze_trend
 - "Give me a summary" or "Overview": use statistical_summary for distribution, get_summary for totals
+- When a data tool returns results, they are shown as a table directly to the user. Do NOT list or repeat the data values in prose. Instead, provide brief analysis: highlight key patterns, outliers, or insights from the table.
 - Always interpret results — name specific groups, state what the numbers mean, flag what needs attention
 - For ad-hoc SQL: call retrieve_schema first to confirm table and column names, then run_sql_query
 
@@ -69,7 +70,7 @@ CRITICAL: Call tools immediately — NEVER output text like "I will use X tool" 
 an error.
 """
 
-_TIMEOUT = 90
+_TIMEOUT = 240
 
 _llm = ChatOllama(
     model=os.environ.get("MODEL", "qwen2.5:14b"),
@@ -170,8 +171,8 @@ class ExcelsisAgent:
                     elif kind == "on_tool_end":
                         name = event.get("name", "")
                         yield {"type": "tool_end", "tool": name}
+                        raw = event.get("data", {}).get("output")
                         if name == "update_dashboard_view":
-                            raw = event.get("data", {}).get("output", "")
                             output = raw.content if hasattr(raw, "content") else str(raw)
                             try:
                                 payload = json.loads(output)
@@ -183,6 +184,9 @@ class ExcelsisAgent:
                                 }
                             except (json.JSONDecodeError, AttributeError):
                                 pass
+                        artifact = getattr(raw, "artifact", None)
+                        if isinstance(artifact, dict) and "columns" in artifact:
+                            yield {"type": "tool_data", "tool": name, **artifact}
 
         except asyncio.TimeoutError:
             yield {"type": "error", "message": "Request timed out. The model may be busy — please try again."}

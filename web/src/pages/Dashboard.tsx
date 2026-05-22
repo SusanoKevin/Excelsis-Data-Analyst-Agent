@@ -62,7 +62,9 @@ export default function Dashboard() {
   const availableClasses = summary?.dimensions ?? []
 
   function handleClassClick(cls: string) {
+    const deselect = selection.group === cls
     select({ group: cls })
+    setFilter((f) => ({ ...f, classes: deselect ? [] : [cls] }))
   }
 
   function handleClassDrill(cls: string) {
@@ -70,6 +72,17 @@ export default function Dashboard() {
     setDrillClass(cls)
     select({ group: cls })
     setFilter((f) => ({ ...f, classes: [cls] }))
+  }
+
+  function handleWeekSelect(week: string) {
+    const deselect = selection.week === week
+    select({ week })
+    if (deselect) {
+      setFilter((f) => ({ ...f, period: 'all', date_from: undefined, date_to: undefined }))
+    } else {
+      const [from, to] = week.split('/')
+      setFilter((f) => ({ ...f, period: 'custom', date_from: from, date_to: to }))
+    }
   }
 
   function handleInspect(entityId: number) {
@@ -83,7 +96,7 @@ export default function Dashboard() {
       setDrillClass(null)
       setDrillStudent(null)
       clearSelection()
-      setFilter((f) => ({ ...f, classes: [] }))
+      setFilter({ classes: [], period: 'all' })
     } else if (level === 'group') {
       setDrillStudent(null)
     }
@@ -228,7 +241,7 @@ export default function Dashboard() {
                   data={weeklyStats}
                   loading={loading}
                   selectedWeek={selection.week}
-                  onSelect={(week) => select({ week })}
+                  onSelect={handleWeekSelect}
                 />
               </div>
 
@@ -260,7 +273,7 @@ export default function Dashboard() {
                 previous={trends.previous}
                 loading={loading}
                 selectedWeek={selection.week}
-                onSelect={(week) => select({ week })}
+                onSelect={handleWeekSelect}
               />
             </div>
           </>
