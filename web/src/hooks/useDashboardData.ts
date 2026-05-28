@@ -9,6 +9,7 @@ import {
   StatusCount,
   WeeklyStat,
 } from '../types'
+import { C, METRIC_THRESHOLD } from '../lib/constants'
 
 export interface DashboardData {
   summary:      DataSummary | null
@@ -46,8 +47,8 @@ function deriveThresholdBreakdown(groupStats: GroupStat[]): StatusCount[] {
   )
   const below = Math.max(0, totals.total - totals.positive_count)
   return [
-    { name: 'Above threshold', value: totals.positive_count, color: '#00a86b' },
-    { name: 'Below threshold', value: below,                  color: '#e74c3c' },
+    { name: 'Above threshold', value: totals.positive_count, color: C.success },
+    { name: 'Below threshold', value: below,                  color: C.danger  },
   ]
 }
 
@@ -80,7 +81,7 @@ export function useDashboardData(filter: DashboardFilter): DashboardData {
       api.get('/data/stats',    { params, signal }),
       api.get('/data/stats',    { params: { ...params, group_by: 'week'        }, signal }),
       api.get('/data/stats',    { params: { ...params, group_by: 'day_of_week' }, signal }),
-      api.get('/data/alerts',   { params: { ...params, threshold: 75 }, signal }),
+      api.get('/data/alerts',   { params: { ...params, threshold: METRIC_THRESHOLD }, signal }),
     ])
       .then(([summaryRes, classRes, weekRes, dowRes, alertsRes]) => {
         if (signal.aborted) return

@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-Seed a local SQL Server 2022 test database with realistic education and financial data.
+Seed a local SQL Server test database with realistic education and financial data.
 
 Creates two databases:
   education_db  — 16 tables, up to ~2.7M rows
   finance_db    — 18 tables, up to ~2.5M rows
 
 Usage:
-    python scripts/seed_test_db.py [--scale small|medium|large]
+    python scripts/seed_test_db.py [--scale small|medium|large] [--auth-method windows|sql]
 
 Prerequisites:
     pip install faker
-    docker compose -f docker/docker-compose.yml up -d   # wait ~30s for healthy
 """
 from __future__ import annotations
 
@@ -25,12 +24,13 @@ import pandas as pd
 from faker import Faker
 from sqlalchemy import create_engine, text
 
-# ── Connection defaults ────────────────────────────────────────────────────────
+# ── Connection defaults (overridable via CLI args) ─────────────────────────────
 
-SERVER   = "localhost,1433"
-USERNAME = "sa"
-PASSWORD = "ExcelsisTest_2024!"
-DRIVER   = "{ODBC Driver 18 for SQL Server}"
+SERVER      = "localhost,1433"
+USERNAME    = "sa"
+PASSWORD    = "ExcelsisTest_2024!"
+DRIVER      = "{ODBC Driver 18 for SQL Server}"
+AUTH_METHOD = "sql"
 
 # ── Scale tiers ────────────────────────────────────────────────────────────────
 
@@ -178,10 +178,16 @@ EXP_STATUS_W    = [0.50, 0.25, 0.10, 0.15]
 # ── Engine / insert helpers ────────────────────────────────────────────────────
 
 def _engine(database: str):
-    dsn = (
-        f"DRIVER={DRIVER};SERVER={SERVER};DATABASE={database};"
-        f"UID={USERNAME};PWD={PASSWORD};TrustServerCertificate=yes;"
-    )
+    if AUTH_METHOD == "windows":
+        dsn = (
+            f"DRIVER={DRIVER};SERVER={SERVER};DATABASE={database};"
+            f"Trusted_Connection=yes;TrustServerCertificate=yes;"
+        )
+    else:
+        dsn = (
+            f"DRIVER={DRIVER};SERVER={SERVER};DATABASE={database};"
+            f"UID={USERNAME};PWD={PASSWORD};TrustServerCertificate=yes;"
+        )
     return create_engine(
         f"mssql+pyodbc:///?odbc_connect={quote_plus(dsn)}",
         fast_executemany=True,
@@ -191,7 +197,7 @@ def _engine(database: str):
 def _insert(engine, table: str, df: pd.DataFrame) -> None:
     if df.empty:
         return
-    print(f"    → {table}: {len(df):,} rows")
+    print(f"    -> {table}: {len(df):,} rows")
     df.to_sql(table, engine, if_exists="append", index=False, chunksize=1_000)
 
 
@@ -200,7 +206,7 @@ def _insert_batched(engine, table: str, build_fn, total: int) -> None:
     while inserted < total:
         count = min(BATCH_SIZE, total - inserted)
         df = build_fn(inserted, count)
-        print(f"    → {table}: batch {inserted:,}–{inserted+count:,} / {total:,}")
+        print(f"    -> {table}: batch {inserted:,}-{inserted+count:,} / {total:,}")
         df.to_sql(table, engine, if_exists="append", index=False, chunksize=1_000)
         inserted += count
 
@@ -456,8 +462,6 @@ def seed_education(cfg: dict) -> None:
     _insert(engine, "academic_terms", pd.DataFrame(terms))
     with engine.connect() as conn:
         term_ids = pd.read_sql("SELECT term_id, start_date, end_date FROM academic_terms", conn)
-    period_ids_list = term_ids["term_id"].tolist()
-
     # departments — 25 rows
     df_depts = pd.DataFrame({
         "name":            DEPT_NAMES,
@@ -1332,17 +1336,25 @@ def seed_finance(cfg: dict) -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed test SQL Server databases.")
-    parser.add_argument(
-        "--scale",
-        choices=["small", "medium", "large"],
-        default="large",
-        help="Data volume (default: large)",
-    )
-    args = parser.parse_args()
-    cfg  = SCALES[args.scale]
+    global SERVER, USERNAME, PASSWORD, AUTH_METHOD
 
-    print(f"Scale: {args.scale.upper()}")
+    parser = argparse.ArgumentParser(description="Seed test SQL Server databases.")
+    parser.add_argument("--scale", choices=["small", "medium", "large"], default="large",
+                        help="Data volume (default: large)")
+    parser.add_argument("--server", default=SERVER, help="SQL Server host (default: localhost,1433)")
+    parser.add_argument("--username", default=USERNAME, help="SQL login (sql auth only)")
+    parser.add_argument("--password", default=PASSWORD, help="SQL password (sql auth only)")
+    parser.add_argument("--auth-method", choices=["sql", "windows"], default=AUTH_METHOD,
+                        help="Authentication method (default: sql)")
+    args = parser.parse_args()
+
+    SERVER      = args.server
+    USERNAME    = args.username
+    PASSWORD    = args.password
+    AUTH_METHOD = args.auth_method
+    cfg         = SCALES[args.scale]
+
+    print(f"Scale: {args.scale.upper()} | Server: {SERVER} | Auth: {AUTH_METHOD}")
     print(f"  Students:     {cfg['n_students']:,}")
     print(f"  Attendance:   {cfg['n_attendance']:,}")
     print(f"  Transactions: {cfg['n_transactions']:,}")
@@ -1352,8 +1364,6 @@ def main() -> None:
     seed_finance(cfg)
 
     print("\nAll done! Both databases are seeded and ready.")
-    print("To point the app at this Docker instance:")
-    print("  cp .env.test .env")
 
 
 if __name__ == "__main__":

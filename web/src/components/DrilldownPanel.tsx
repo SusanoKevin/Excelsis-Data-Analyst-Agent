@@ -2,9 +2,7 @@ import { useState } from 'react'
 import WeeklyTrendChart from './charts/WeeklyTrendChart'
 import { AlertItem, DrillLevel, WeeklyStat } from '../types'
 import { ChartSelection } from '../hooks/useChartSelection'
-
-const DANGER_HEX  = '#e74c3c'
-const WARNING_HEX = '#f5a623'
+import { C, METRIC_THRESHOLD } from '../lib/constants'
 
 type SortCol = 'positive_count' | 'metric_rate'
 type SortDir = 'asc' | 'desc'
@@ -39,7 +37,7 @@ function Sparkline({ points, rate }: { points: (number | null)[], rate: number }
   return (
     <svg width={W} height={H} className="overflow-visible" aria-hidden="true">
       <path d={segs.join(' ')} fill="none"
-        stroke={rate < 70 ? DANGER_HEX : WARNING_HEX}
+        stroke={rate < 70 ? C.danger : C.warning}
         strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
@@ -87,7 +85,7 @@ export default function DrilldownPanel({
     const entities = atRisk.filter((s) => {
       const groupMatch = !effectiveGroup || s.group_name === effectiveGroup
       const thresholdMatch = !selection?.threshold ||
-        (selection.threshold === 'above' ? s.metric_rate >= 75 : s.metric_rate < 75)
+        (selection.threshold === 'above' ? s.metric_rate >= METRIC_THRESHOLD : s.metric_rate < METRIC_THRESHOLD)
       return groupMatch && thresholdMatch
     })
 
@@ -102,7 +100,7 @@ export default function DrilldownPanel({
           <h3 className="text-sm font-semibold text-carbon">
             Threshold Alerts{effectiveGroup ? ` — ${effectiveGroup}` : ''}
           </h3>
-          <p className="text-xs text-pewter mt-0.5">Below 75% metric threshold</p>
+          <p className="text-xs text-pewter mt-0.5">Below {METRIC_THRESHOLD}% metric threshold</p>
         </div>
 
         {sorted.length === 0 ? (

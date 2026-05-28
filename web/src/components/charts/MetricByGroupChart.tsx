@@ -4,6 +4,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { GroupStat } from '../../types'
+import { C, METRIC_THRESHOLD, rateHex } from '../../lib/constants'
 
 interface Props {
   data:          GroupStat[]
@@ -13,15 +14,14 @@ interface Props {
   loading:       boolean
 }
 
-function rateColor(rate: number): string {
-  if (rate < 70) return '#e74c3c'
-  if (rate < 80) return '#f5a623'
-  return '#00a86b'
+interface TooltipProps {
+  active?:  boolean
+  payload?: Array<{ payload: GroupStat }>
 }
 
-function CustomTooltip({ active, payload }: any) {
+function CustomTooltip({ active, payload }: TooltipProps) {
   if (!active || !payload?.length) return null
-  const d: GroupStat = payload[0].payload
+  const d = payload[0].payload
   return (
     <div className="bg-fog border border-arctic-mist rounded-[10px] p-3 text-xs shadow-sm">
       <p className="font-semibold text-carbon mb-1">{d.class}</p>
@@ -65,17 +65,17 @@ export default function MetricByGroupChart({ data, selectedGroup, onSelect, onCl
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={sorted} layout="vertical" margin={{ left: 72, right: 32, top: 8, bottom: 8 }}>
-        <CartesianGrid horizontal={false} stroke="#ececec" />
-        <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: '#5d5d5d' }} />
+        <CartesianGrid horizontal={false} stroke={C.grid} />
+        <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: C.muted }} />
         <YAxis type="category" dataKey="class" tick={{ fontSize: 12, fill: '#0d0d0d' }} width={68} />
-        <ReferenceLine x={75} stroke="#e74c3c" strokeDasharray="3 3"
-          label={{ value: '75%', fill: '#e74c3c', fontSize: 10, position: 'insideTopRight' }} />
+        <ReferenceLine x={METRIC_THRESHOLD} stroke={C.danger} strokeDasharray="3 3"
+          label={{ value: `${METRIC_THRESHOLD}%`, fill: C.danger, fontSize: 10, position: 'insideTopRight' }} />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
         <Bar dataKey="metric_rate" radius={[0, 4, 4, 0]}>
           {sorted.map((entry) => (
             <Cell
               key={entry.class}
-              fill={selectedGroup && selectedGroup !== entry.class ? '#ececec' : rateColor(entry.metric_rate)}
+              fill={selectedGroup && selectedGroup !== entry.class ? C.grid : rateHex(entry.metric_rate)}
               cursor="pointer"
               onClick={() => handleClick(entry.class)}
               onDoubleClick={() => handleDoubleClick(entry.class)}

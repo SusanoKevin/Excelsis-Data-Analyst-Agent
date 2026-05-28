@@ -10,12 +10,12 @@ The agent's primary data domain is configured through environment variables:
 
 | Variable | Description | Example |
 |---|---|---|
-| `PRIMARY_TABLE` | Main table the agent queries | `attendance_records` |
+| `PRIMARY_TABLE` | Main table the agent queries | `attendance` |
 | `METRIC_COLUMN` | Column that holds the status/metric value | `status` |
 | `POSITIVE_VALUE` | Value that counts as a positive outcome | `present` |
 | `ENTITY_COLUMN` | Row-level entity identifier | `student_id` |
 | `ENTITY_NAME_COLUMN` | Human-readable entity name | `student_name` |
-| `GROUP_COLUMNS` | Comma-separated grouping dimensions | `class,grade` |
+| `GROUP_COLUMNS` | Comma-separated grouping dimensions | `grade,class_section` |
 
 ## Threshold Alerting
 
@@ -30,7 +30,7 @@ Entities whose positive-outcome rate falls below `AT_RISK_THRESHOLD` (default `7
 
 ## Attendance Domain Example
 
-When `PRIMARY_TABLE=attendance_records`, `METRIC_COLUMN=status`, `POSITIVE_VALUE=present`:
+When `PRIMARY_TABLE=attendance`, `METRIC_COLUMN=status`, `POSITIVE_VALUE=present`:
 
 - **Present** — Entity completed the full session.
 - **Absent** — Entity did not attend without prior notification.

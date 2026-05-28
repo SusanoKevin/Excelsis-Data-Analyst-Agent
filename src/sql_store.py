@@ -35,16 +35,23 @@ def _assert_select_only(sql: str) -> None:
 
 
 def _build_engine(database: str) -> Engine:
-    server    = os.environ["SQL_SERVER"]
-    driver    = os.environ.get("SQL_DRIVER", "{ODBC Driver 18 for SQL Server}")
-    username  = os.environ["SQL_USERNAME"]
-    password  = os.environ["SQL_PASSWORD"]
-    pool_size = int(os.environ.get("SQL_POOL_SIZE", "5"))
-    timeout   = int(os.environ.get("SQL_QUERY_TIMEOUT", "30"))
-    dsn = (
-        f"DRIVER={driver};SERVER={server};DATABASE={database};"
-        f"UID={username};PWD={password};TrustServerCertificate=yes;"
-    )
+    server      = os.environ["SQL_SERVER"]
+    driver      = os.environ.get("SQL_DRIVER", "{ODBC Driver 18 for SQL Server}")
+    pool_size   = int(os.environ.get("SQL_POOL_SIZE", "5"))
+    timeout     = int(os.environ.get("SQL_QUERY_TIMEOUT", "30"))
+    auth_method = os.environ.get("SQL_AUTH_METHOD", "sql")
+    if auth_method == "windows":
+        dsn = (
+            f"DRIVER={driver};SERVER={server};DATABASE={database};"
+            f"Trusted_Connection=yes;TrustServerCertificate=yes;"
+        )
+    else:
+        username = os.environ["SQL_USERNAME"]
+        password = os.environ["SQL_PASSWORD"]
+        dsn = (
+            f"DRIVER={driver};SERVER={server};DATABASE={database};"
+            f"UID={username};PWD={password};TrustServerCertificate=yes;"
+        )
     url = f"mssql+pyodbc:///?odbc_connect={quote_plus(dsn)}"
     return create_engine(
         url,

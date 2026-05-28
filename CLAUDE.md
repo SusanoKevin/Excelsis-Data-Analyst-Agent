@@ -72,7 +72,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ```bash
 ollama pull qwen2.5:14b
-ollama pull nomic-embed-text
 cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.lock          # use the lock file for reproducible installs
@@ -80,7 +79,7 @@ pip install -e ".[dev]"                   # adds faker (needed by scripts/seed_t
 cd web && npm install && cd ..
 ```
 
-Ollama must be running on `http://localhost:11434` before starting the stack.
+Ollama must be running on `http://localhost:11434` before starting the stack. The embedding model (`BAAI/bge-small-en-v1.5` by default) is downloaded automatically from HuggingFace on first run — no `ollama pull` needed for embeddings.
 
 Required `.env` variables:
 - `JWT_SECRET` — must be changed from the default before any production use
@@ -104,7 +103,7 @@ Schema / domain config (all optional, override to point at any tabular SQL schem
 
 RAG / vector store config:
 - `CHROMA_PATH` — default `.chroma`; persistent ChromaDB directory
-- `EMBED_MODEL` — default `nomic-embed-text`; Ollama embedding model (must be pulled first)
+- `EMBED_MODEL` — default `BAAI/bge-small-en-v1.5`; HuggingFace embedding model (downloaded automatically on first run)
 - `DOCS_PATH` — default `docs`; directory scanned for policy PDFs and Markdown files
 - `RAG_CACHE_TTL` — default `3600`; TTL in seconds for RAG query result cache
 

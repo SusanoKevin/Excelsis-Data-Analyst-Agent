@@ -72,9 +72,13 @@ an error.
 
 _TIMEOUT = 240
 
+_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+_api_key  = os.environ.get("OLLAMA_API_KEY", "")
+
 _llm = ChatOllama(
     model=os.environ.get("MODEL", "qwen2.5:14b"),
-    base_url="http://localhost:11434",
+    base_url=_base_url,
+    headers={"Authorization": f"Bearer {_api_key}"} if _api_key else {},
     temperature=0.1,
     num_ctx=8192,
     keep_alive="10m",
@@ -194,6 +198,3 @@ class ExcelsisAgent:
 
         self._append_history(message, full)
 
-    def reset_history(self) -> None:
-        with self._history_lock:
-            self._history.clear()

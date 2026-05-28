@@ -23,7 +23,7 @@ MCP_USER = UserContext(user_id=os.getenv("MCP_USER_ID", "mcp_user"))
 store = SQLDataStore()
 rag_store = ExcelsisRAGStore(
     chroma_path=os.getenv("CHROMA_PATH", ".chroma"),
-    embed_model=os.getenv("EMBED_MODEL", "nomic-embed-text"),
+    embed_model=os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5"),
 )
 agent = ExcelsisAgent(store=store, rag_store=rag_store)
 

@@ -34,12 +34,13 @@ def _validate_startup(store: SQLDataStore) -> None:
     if os.environ.get("JWT_SECRET", "change-me-in-production") == "change-me-in-production":
         logger.warning("SECURITY: JWT_SECRET is the default — set JWT_SECRET in .env before production use")
 
+    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     ollama_ok = False
     try:
-        urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3)
+        urllib.request.urlopen(f"{ollama_base_url}/api/tags", timeout=3)
         ollama_ok = True
     except Exception:
-        logger.warning("Ollama not reachable at http://localhost:11434 — agent responses will fail")
+        logger.warning("Ollama not reachable at %s — agent responses will fail", ollama_base_url)
 
     sql_ok = store.ping()
     if not sql_ok:
@@ -57,7 +58,7 @@ async def lifespan(app: FastAPI):
     store = SQLDataStore()
     rag_store = ExcelsisRAGStore(
         chroma_path=os.getenv("CHROMA_PATH", ".chroma"),
-        embed_model=os.getenv("EMBED_MODEL", "nomic-embed-text"),
+        embed_model=os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5"),
     )
     app.state.store     = store
     app.state.rag_store = rag_store

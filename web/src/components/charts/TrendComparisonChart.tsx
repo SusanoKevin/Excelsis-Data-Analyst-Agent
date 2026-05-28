@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { WeeklyStat } from '../../types'
+import { C } from '../../lib/constants'
 
 interface Props {
   current:       WeeklyStat[]
@@ -51,7 +52,7 @@ export default function TrendComparisonChart({ current, previous, loading, selec
         <Line
           type="monotone"
           dataKey="current"
-          stroke="#00a86b"
+          stroke={C.success}
           name="Last 30 days"
           dot={false}
           strokeWidth={2}

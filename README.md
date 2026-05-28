@@ -8,8 +8,8 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 
 - **Natural-language chat** — ask questions about your data in plain English; the agent reasons across multiple tools and streams the answer token-by-token
 - **ReAct reasoning loop** — the agent decides which tools to call (metric stats, threshold alerts, ad-hoc SQL, trend analysis, anomaly detection) and in what order
-- **RAG knowledge base** — ChromaDB vector store (`nomic-embed-text` embeddings via Ollama) indexes SQL schema metadata and policy documents; the agent uses `retrieve_schema` and `retrieve_policy` for accurate, grounded answers
-- **Two-model setup** — `qwen2.5:14b` (default, configurable via `MODEL`) handles reasoning and tool calling; `nomic-embed-text` handles vector encoding for the RAG layer; both run fully locally via Ollama
+- **RAG knowledge base** — ChromaDB vector store (`BAAI/bge-small-en-v1.5` embeddings via HuggingFace, auto-downloaded) indexes SQL schema metadata and policy documents; the agent uses `retrieve_schema` and `retrieve_policy` for accurate, grounded answers
+- **Two-model setup** — `qwen2.5:14b` (default, configurable via `MODEL`) drives the ReAct reasoning loop via Ollama; `BAAI/bge-small-en-v1.5` (configurable via `EMBED_MODEL`) handles vector encoding via HuggingFace (no Ollama pull needed)
 - **Prompt guardrails** — every chat message is validated before reaching the agent: length cap (2000 chars), token-budget check, and injection-pattern detection
 - **SQL Server backend** — connects to one or more SQL Server databases; schema is fully configurable via env vars; the agent can run ad-hoc T-SQL SELECT queries alongside structured tools
 - **Interactive web dashboard** — five Recharts-powered charts (metric by group, weekly trend, metric breakdown, day-of-week bar, period comparison) with Power BI-style cross-filtering and drill-down
@@ -35,7 +35,7 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 | Charts | Recharts (bar, line, pie, area — five chart components) |
 | Data wrangling | pandas + numpy |
 | Vector DB | ChromaDB (persistent) |
-| Embeddings | `nomic-embed-text` via Ollama |
+| Embeddings | `BAAI/bge-small-en-v1.5` via HuggingFace (auto-downloaded) |
 | Rate limiter | slowapi |
 
 ---
@@ -96,10 +96,9 @@ Download Ollama from [ollama.com](https://ollama.com) and pull the required mode
 
 ```bash
 ollama pull qwen2.5:14b
-ollama pull nomic-embed-text
 ```
 
-Ollama must be running on `http://localhost:11434` before starting the app.
+Ollama must be running on `http://localhost:11434` before starting the app. The embedding model (`BAAI/bge-small-en-v1.5` by default) is downloaded automatically from HuggingFace on first run.
 
 ### 2. Clone and configure
 
@@ -118,11 +117,14 @@ ADMIN_PASSWORD=your-admin-password
 
 ```bash
 python -m venv .venv
+# macOS/Linux:
 source .venv/bin/activate
+# Windows:
+.venv\Scripts\activate
 pip install -r requirements.lock
 ```
 
-> Ollama model weights are downloaded on first `ollama pull`. Subsequent starts are instant. `nomic-embed-text` is required for the RAG knowledge base; `qwen2.5:14b` drives the ReAct agent.
+> Ollama model weights are downloaded on first `ollama pull`. Subsequent starts are instant. `qwen2.5:14b` drives the ReAct agent. The embedding model is downloaded automatically from HuggingFace on first run — no separate pull needed.
 
 ### 4. Install frontend dependencies
 
@@ -133,7 +135,11 @@ cd web && npm install && cd ..
 ### 5. Start both servers
 
 ```bash
+# macOS / Linux
 bash start.sh
+
+# Windows
+pwsh start.ps1
 ```
 
 This starts:
@@ -152,12 +158,13 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `MODEL` | No | `qwen2.5:14b` | Ollama model for the ReAct agent |
-| `SQL_SERVER` | Yes | — | SQL Server hostname or IP |
+| `SQL_SERVER` | Yes | — | SQL Server hostname or IP (use `.` for local default instance) |
 | `SQL_DATABASES` | Yes | — | Comma-separated list of databases to expose |
 | `SQL_PRIMARY_DB` | No | first in list | Default database for queries |
 | `SQL_DRIVER` | No | `{ODBC Driver 18 for SQL Server}` | ODBC driver string |
-| `SQL_USERNAME` | Yes | — | SQL Server login username |
-| `SQL_PASSWORD` | Yes | — | SQL Server login password |
+| `SQL_AUTH_METHOD` | No | `sql` | `sql` (username/password) or `windows` (Windows integrated auth) |
+| `SQL_USERNAME` | SQL auth only | — | SQL Server login username |
+| `SQL_PASSWORD` | SQL auth only | — | SQL Server login password |
 | `SQL_POOL_SIZE` | No | `5` | SQLAlchemy `QueuePool` base connection count per database |
 | `SQL_QUERY_TIMEOUT` | No | `30` | Per-query connection timeout in seconds |
 | `AT_RISK_THRESHOLD` | No | `75.0` | Default metric % threshold for below-threshold flagging |
@@ -206,13 +213,50 @@ cp .env.test .env
 
 ---
 
+## Native Windows SQL Server
+
+If you have SQL Server installed locally (no Docker), you can seed the same test databases directly using Windows integrated authentication — no password needed.
+
+**Prerequisites:** ODBC Driver 18 for SQL Server must be installed and the SQL Server service must be running.
+
+```bash
+# Install the seeding dependency
+pip install -e ".[dev]"
+
+# Create and seed both databases (Windows auth, local default instance)
+python scripts/seed_test_db.py --scale medium --auth-method windows --server .
+```
+
+Then update `.env`:
+
+```env
+SQL_SERVER=.
+SQL_AUTH_METHOD=windows
+SQL_DATABASES=education_db,finance_db
+SQL_PRIMARY_DB=education_db
+```
+
+Use `--server .\SQLEXPRESS` if running SQL Server Express, or `--server myhost` for a remote instance. For SQL auth on any server, omit `--auth-method windows` and add `--username sa --password yourpassword` instead.
+
+| Scale | Students | Attendance rows | Approx. time |
+|---|---|---|---|
+| `small` | 1 000 | 100 000 | ~10 s |
+| `medium` | 5 000 | 500 000 | ~1–2 min |
+| `large` | 20 000 | 2 000 000 | ~5–10 min |
+
+---
+
 ## Models
 
 All models run locally via [Ollama](https://ollama.com). No API keys or internet access required at inference time.
 
-### LLM — `qwen2.5:14b`
+### LLM — `qwen2.5:14b` (default, set via `MODEL`)
 
-Drives the LangGraph ReAct loop via `ChatOllama`. Handles both tool calling (data queries, at-risk identification, dashboard requests, knowledge-base lookups) and direct conversational replies in a single unified pipeline.
+Drives the LangGraph ReAct loop via `ChatOllama`. Handles tool calling (data queries, at-risk identification, dashboard requests, knowledge-base lookups) and direct conversational replies in a single unified pipeline. Supports Ollama Cloud (`OLLAMA_BASE_URL` + `OLLAMA_API_KEY`) or a local Ollama instance.
+
+### Embeddings — `BAAI/bge-small-en-v1.5` (default, set via `EMBED_MODEL`)
+
+Encodes queries and documents for ChromaDB vector search. Loaded via `HuggingFaceEmbeddings` — downloaded automatically from HuggingFace on first run, no Ollama pull required.
 
 ---
 

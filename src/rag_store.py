@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 from langchain_chroma import Chroma
-from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from .sql_store import _TTLCache
 
@@ -15,17 +15,13 @@ class ExcelsisRAGStore:
     def __init__(
         self,
         chroma_path: str = ".chroma",
-        embed_model: str = "nomic-embed-text",
-        ollama_base_url: str = "http://localhost:11434",
+        embed_model: str = "BAAI/bge-small-en-v1.5",
         schema_k: int = 6,
         policy_k: int = 4,
     ) -> None:
         self._schema_k = schema_k
         self._policy_k = policy_k
-        embeddings = OllamaEmbeddings(
-            model=embed_model,
-            base_url=ollama_base_url,
-        )
+        embeddings = HuggingFaceEmbeddings(model_name=embed_model)
         self._schema_vs = Chroma(
             collection_name=self.SCHEMA_COLLECTION,
             embedding_function=embeddings,
