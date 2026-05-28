@@ -10,6 +10,12 @@ const TOOL_LABELS: Record<string, string> = {
   run_sql_query:         'SQL query',
   compare_periods:       'Period comparison',
   compare_segments:      'Comparing segments…',
+  retrieve_schema:       'Looking up schema…',
+  retrieve_policy:       'Retrieving policy…',
+  statistical_summary:   'Computing statistics…',
+  detect_anomalies:      'Detecting anomalies…',
+  get_top_n:             'Ranking groups…',
+  analyze_trend:         'Analysing trend…',
 }
 
 function DataTable({ table }: { table: ToolTable }) {

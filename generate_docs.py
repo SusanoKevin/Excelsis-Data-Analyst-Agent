@@ -700,9 +700,9 @@ LLM node  (qwen2.5:14b)
     story += section("6.4  Timeout Handling")
     story.append(body(
         "Both the synchronous ask() method and the async astream_events() generator enforce a "
-        "90-second timeout. If the LLM does not complete within this window, the request fails "
+        "240-second timeout. If the LLM does not complete within this window, the request fails "
         "gracefully with a user-facing message rather than hanging indefinitely. The synchronous "
-        "path uses a daemon thread + threading.Event; the async path uses asyncio.timeout()."
+        "path uses a daemon thread + queue.Queue; the async path uses asyncio.timeout()."
     ))
     story.append(sp())
 
@@ -760,7 +760,7 @@ LLM node  (qwen2.5:14b)
             "Update the live dashboard to show a specific view or filter.",
             "classes: list[str], period: str, view: str",
             "Returns a JSON payload; the SSE layer emits a dashboard_filter event to the browser, updating React state without a page reload.",
-            ["update_dashboard_view(classes=[\"10A\"], view=\"class\")"],
+            ["update_dashboard_view(segments=[\"10A\"], view=\"group\")"],
         ),
         (
             "run_sql_query",
@@ -859,7 +859,7 @@ LLM node  (qwen2.5:14b)
         ["DELETE", "/auth/users/{username}", "Admin", "Delete a user (cannot delete 'admin')"],
         ["POST", "/chat/stream", "Any user", "SSE streaming chat — delegates to ExcelsisAgent.astream_events()"],
         ["GET", "/data/summary", "Any user", "Attendance data overview (calls store.summary())"],
-        ["GET", "/data/at-risk", "Any user", "At-risk student list (threshold, classes, date_from, date_to params)"],
+        ["GET", "/data/alerts", "Any user", "Threshold alerts — entities below a metric % (threshold, classes, date_from, date_to params)"],
         ["GET", "/data/stats", "Any user", "Aggregated stats (group_by, period, classes, date_from, date_to params)"],
         ["GET", "/data/trends", "Any user", "Current and prior 30-day weekly stats for trend comparison chart"],
         ["GET", "/data/sparklines", "Any user", "Weekly rates for a list of student IDs (ids= CSV param)"],
@@ -998,9 +998,9 @@ LLM node  (qwen2.5:14b)
         ["FilterBar", "Class multi-select and period dropdown. Changing either triggers a fresh data fetch for all dashboard charts."],
         ["Breadcrumb", "Shows the current drill level (Overview → Class → Student). Click to navigate back up."],
         ["DrilldownPanel", "Renders class-level or student-level detail depending on drill state. Student view shows a sparkline trend chart."],
-        ["AttendanceByClassChart", "Horizontal bar chart of attendance rate by class. Single-click filters; double-click drills down."],
-        ["WeeklyTrendChart", "Line chart of weekly attendance rate over the selected period."],
-        ["StatusDonutChart", "Donut chart of present / absent / late / excused proportions."],
+        ["MetricByGroupChart", "Horizontal bar chart of metric rate by group. Single-click filters; double-click drills down."],
+        ["WeeklyTrendChart", "Line chart of weekly metric rate over the selected period."],
+        ["MetricBreakdownChart", "Donut chart of positive / negative outcome proportions."],
         ["WeekdayBarChart", "Bar chart of attendance rate by day of week."],
         ["TrendComparisonChart", "Grouped bar chart comparing current vs prior 30-day periods per class."],
         ["ProtectedRoute", "HOC that redirects unauthenticated users to /login."],
@@ -1198,7 +1198,7 @@ CURRENT_USER = UserContext(user_id="admin")"""
         "<b>Password hashing</b> — all passwords are bcrypt-hashed with per-password salts; plaintext passwords are never stored.",
         "<b>Rate limiting</b> — chat endpoint is limited to 10 requests/minute/IP to prevent abuse.",
         "<b>Local inference</b> — all LLM inference runs on localhost via Ollama; attendance data never leaves the network.",
-        "<b>Timeout enforcement</b> — 90-second hard timeout on all agent calls prevents hanging requests.",
+        "<b>Timeout enforcement</b> — 240-second hard timeout on all agent calls prevents hanging requests.",
     ])
     story.append(sp())
 

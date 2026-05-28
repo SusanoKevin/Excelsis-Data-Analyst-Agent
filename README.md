@@ -6,18 +6,19 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 
 ## Features
 
-- **Natural-language chat** — ask questions about Excelsis360 data in plain English; the analysis model reasons across multiple tools and streams the answer token-by-token
-- **ReAct reasoning loop** — the analysis model decides which tools to call (attendance stats, at-risk query, ad-hoc SQL) and in what order
+- **Natural-language chat** — ask questions about your data in plain English; the agent reasons across multiple tools and streams the answer token-by-token
+- **ReAct reasoning loop** — the agent decides which tools to call (metric stats, threshold alerts, ad-hoc SQL, trend analysis, anomaly detection) and in what order
 - **RAG knowledge base** — ChromaDB vector store (`nomic-embed-text` embeddings via Ollama) indexes SQL schema metadata and policy documents; the agent uses `retrieve_schema` and `retrieve_policy` for accurate, grounded answers
-- **Two-model setup** — `qwen2.5:14b` handles reasoning and tool calling; `nomic-embed-text` handles vector encoding for the RAG layer; both run fully locally via Ollama
+- **Two-model setup** — `qwen2.5:14b` (default, configurable via `MODEL`) handles reasoning and tool calling; `nomic-embed-text` handles vector encoding for the RAG layer; both run fully locally via Ollama
 - **Prompt guardrails** — every chat message is validated before reaching the agent: length cap (2000 chars), token-budget check, and injection-pattern detection
-- **SQL Server backend** — connects to one or more SQL Server databases; the agent can run ad-hoc T-SQL SELECT queries alongside structured tools
-- **Interactive dashboards** — Plotly interactive charts and a multi-panel matplotlib/seaborn static dashboard (PNG)
-- **Web UI** — React + Tailwind dark-themed interface with live streaming chat, KPI dashboard, threshold alerts table, and user management
-- **REST API** — FastAPI backend with JWT auth, SSE streaming, file upload, and dashboard generation
-- **Rate limiting** — 10 requests/minute per IP on all chat and data endpoints (slowapi)
+- **SQL Server backend** — connects to one or more SQL Server databases; schema is fully configurable via env vars; the agent can run ad-hoc T-SQL SELECT queries alongside structured tools
+- **Interactive web dashboard** — five Recharts-powered charts (metric by group, weekly trend, metric breakdown, day-of-week bar, period comparison) with Power BI-style cross-filtering and drill-down
+- **Agent ↔ dashboard link** — asking the agent to show a chart or filter the data updates the dashboard live via SSE
+- **Web UI** — React 18 + Tailwind interface with live streaming chat, KPI cards, threshold alerts table, sparkline trends, and user management
+- **REST API** — FastAPI backend with JWT auth, SSE streaming, and rate limiting
+- **Rate limiting** — chat endpoint capped at 10 requests/minute per user/IP (slowapi)
 - **Jupyter notebook** — full interactive analysis environment that shares the same `src/` backend
-- **MCP server** — exposes Excelsis360 data tools to Claude Code
+- **MCP server** — exposes Excelsis360 data tools to Claude Code via FastMCP
 
 ---
 
@@ -25,14 +26,14 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 
 | Layer | Technology |
 |---|---|
-| LLM | `qwen2.5:14b` via Ollama (`langchain-ollama`) |
+| LLM | `qwen2.5:14b` via Ollama (`langchain-ollama`, configurable via `MODEL`) |
 | Agent | LangGraph ReAct (`create_react_agent`) |
 | Database | SQL Server via SQLAlchemy + `pyodbc` (ODBC Driver 18, `QueuePool`) |
 | Backend | FastAPI + Uvicorn |
 | Auth | JWT (python-jose) + bcrypt |
 | Frontend | React 18 + Vite + Tailwind CSS |
-| Data | pandas, supports CSV / Excel / Parquet |
-| Dashboards | Plotly (interactive HTML) + matplotlib/seaborn (PNG) |
+| Charts | Recharts (bar, line, pie, area — five chart components) |
+| Data wrangling | pandas + numpy |
 | Vector DB | ChromaDB (persistent) |
 | Embeddings | `nomic-embed-text` via Ollama |
 | Rate limiter | slowapi |
@@ -68,7 +69,10 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 ├── web/                  # React frontend
 │   └── src/
 │       ├── pages/        # Login, Chat, Dashboard, Users
-│       ├── components/   # Sidebar, MessageBubble, ProtectedRoute
+│       ├── components/   # Sidebar, ChatPanel, MessageBubble, DrilldownPanel,
+│       │                 # FilterBar, Breadcrumb, ProtectedRoute, charts/
+│       ├── hooks/        # useDashboardData, useChartSelection
+│       ├── lib/          # useChat, suggestions
 │       └── api/client.ts # Axios instance + SSE streaming helper
 │
 ├── docker/               # Local test infrastructure
@@ -222,13 +226,13 @@ Drives the LangGraph ReAct loop via `ChatOllama`. Handles both tool calling (dat
 | Users | `/users` | Admin only |
 
 ### Chat
-Type any question in natural language. The analysis model streams its response token-by-token, with tool-use indicators showing which data sources it consulted (e.g. *Attendance data*, *SQL query*).
+Type any question in natural language. The agent streams its response token-by-token, showing tool-use badges for each data source consulted (e.g. *Querying data…*, *SQL query*, *Detecting anomalies…*).
 
 Example questions:
-- *Which classes have the lowest attendance this month?*
-- *List all students below 70% in class 10A*
-- *What are the best intervention strategies for chronic absenteeism?*
-- *How does Monday attendance compare to Friday?*
+- *Which groups have the lowest metric rate this month?*
+- *List all entities below 70% threshold*
+- *How does this week compare to last month?*
+- *Show me the trend — is it improving or declining?*
 
 ---
 

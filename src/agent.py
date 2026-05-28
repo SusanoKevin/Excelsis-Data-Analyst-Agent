@@ -178,7 +178,7 @@ class ExcelsisAgent:
                                 payload = json.loads(output)
                                 yield {
                                     "type":    "dashboard_filter",
-                                    "classes": payload.get("classes", []),
+                                    "classes": payload.get("segments", []),
                                     "period":  payload.get("period", "all"),
                                     "view":    payload.get("view", "overview"),
                                 }

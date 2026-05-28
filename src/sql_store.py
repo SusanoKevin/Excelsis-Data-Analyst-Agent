@@ -106,6 +106,24 @@ class SQLDataStore:
         self._engines: dict[str, Engine] = {db: _build_engine(db) for db in self._databases}
         self._cache = _TTLCache(ttl=300)
 
+    def _build_period_clause(
+        self, period: str, date_from: str | None, date_to: str | None, params: list
+    ) -> str:
+        dc, t = self._date_col, self._table
+        if date_from or date_to:
+            parts: list[str] = []
+            if date_from: parts.append(f"AND {dc} >= ?"); params.append(date_from)
+            if date_to:   parts.append(f"AND {dc} <= ?"); params.append(date_to)
+            return " ".join(parts)
+        if period == "last_7_days":
+            return f"AND {dc} >= (SELECT DATEADD(dd,-7,MAX({dc})) FROM {t})"
+        if period == "last_30_days":
+            return f"AND {dc} >= (SELECT DATEADD(dd,-30,MAX({dc})) FROM {t})"
+        if period == "prior_30_days":
+            return (f"AND {dc} >= (SELECT DATEADD(dd,-60,MAX({dc})) FROM {t}) "
+                    f"AND {dc} <  (SELECT DATEADD(dd,-30,MAX({dc})) FROM {t})")
+        return ""
+
     def _build_group_expr(self) -> dict[str, tuple[str, str]]:
         dc = self._date_col
         expr: dict[str, tuple[str, str]] = {}
@@ -219,26 +237,7 @@ class SQLDataStore:
         t, mc, pv, dc = self._table, self._metric_col, self._positive_val, self._date_col
         params: list = [pv, pv]
 
-        if date_from or date_to:
-            period_parts = []
-            if date_from:
-                period_parts.append(f"AND {dc} >= ?")
-                params.append(date_from)
-            if date_to:
-                period_parts.append(f"AND {dc} <= ?")
-                params.append(date_to)
-            period_clause = " ".join(period_parts)
-        elif period == "last_7_days":
-            period_clause = f"AND {dc} >= (SELECT DATEADD(dd,-7,MAX({dc})) FROM {t})"
-        elif period == "last_30_days":
-            period_clause = f"AND {dc} >= (SELECT DATEADD(dd,-30,MAX({dc})) FROM {t})"
-        elif period == "prior_30_days":
-            period_clause = (
-                f"AND {dc} >= (SELECT DATEADD(dd,-60,MAX({dc})) FROM {t}) "
-                f"AND {dc} <  (SELECT DATEADD(dd,-30,MAX({dc})) FROM {t})"
-            )
-        else:
-            period_clause = ""
+        period_clause = self._build_period_clause(period, date_from, date_to, params)
 
         segment_clause = ""
         if segments and self._group_cols:
@@ -286,14 +285,7 @@ class SQLDataStore:
             segment_clause = f"AND {grp0} IN ({_ph(len(segments))})"
             params.extend(segments)
 
-        date_clause = ""
-        if date_from:
-            date_clause += f"AND {dc} >= ? "
-            params.append(date_from)
-        if date_to:
-            date_clause += f"AND {dc} <= ? "
-            params.append(date_to)
-
+        date_clause = self._build_period_clause("", date_from, date_to, params)
         params.append(pv)
         params.append(threshold)
 
@@ -328,11 +320,7 @@ class SQLDataStore:
             return cached
 
         t, mc, pv, dc, ec = self._table, self._metric_col, self._positive_val, self._date_col, self._entity_col
-        week_expr = (
-            f"CONVERT(NVARCHAR(10),DATEADD(dd,1-DATEPART(dw,{dc}),{dc}),23)"
-            f"+'/'+"
-            f"CONVERT(NVARCHAR(10),DATEADD(dd,7-DATEPART(dw,{dc}),{dc}),23)"
-        )
+        week_expr = self._group_expr["week"][0]
         df = self._query(f"""
         SELECT
             {ec}                                        AS entity_id,
