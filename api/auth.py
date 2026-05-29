@@ -90,7 +90,13 @@ def list_users() -> list[str]:
     return list(_load().keys())
 
 
+def _validate_password(password: str) -> None:
+    if len(password) < 12:
+        raise ValueError("Password must be at least 12 characters.")
+
+
 def create_user(username: str, password: str) -> bool:
+    _validate_password(password)
     with _lock:
         users = _load()
         if username in users:

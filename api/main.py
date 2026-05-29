@@ -31,8 +31,12 @@ def _validate_startup(store: SQLDataStore) -> None:
     server = os.environ.get("SQL_SERVER", "<not set>")
     dbs    = os.environ.get("SQL_DATABASES", store.primary_db)
 
-    if os.environ.get("JWT_SECRET", "change-me-in-production") == "change-me-in-production":
-        logger.warning("SECURITY: JWT_SECRET is the default — set JWT_SECRET in .env before production use")
+    jwt_secret = os.environ.get("JWT_SECRET", "change-me-in-production")
+    if jwt_secret == "change-me-in-production":
+        raise RuntimeError(
+            "SECURITY: JWT_SECRET is the insecure default. "
+            "Set JWT_SECRET to a strong random value in your .env before starting."
+        )
 
     ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     ollama_ok = False
@@ -64,11 +68,17 @@ async def lifespan(app: FastAPI):
     app.state.rag_store = rag_store
     app.state.agent     = ExcelsisAgent(store=store, rag_store=rag_store)
 
+    app.state.rag_ready = False
+
     docs_path = os.getenv("DOCS_PATH", "docs")
+
+    def _ingest_and_mark():
+        run_ingestion(rag_store, store, docs_path)
+        app.state.rag_ready = True
+
     threading.Thread(
-        target=run_ingestion,
-        args=(rag_store, store, docs_path),
-        daemon=True,
+        target=_ingest_and_mark,
+        daemon=False,
         name="rag-ingestor",
     ).start()
 
@@ -88,12 +98,16 @@ app = FastAPI(title="Excelsis 360 API", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _on_rate_limit_exceeded)
 
+_allowed_origins = [o.strip() for o in os.environ.get(
+    "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"
+).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
@@ -102,5 +116,8 @@ app.include_router(data_router, prefix="/data", tags=["data"])
 
 
 @app.get("/health", tags=["health"])
-async def health():
-    return {"status": "ok"}
+async def health(request: Request):
+    return {
+        "status": "ok",
+        "rag_ready": getattr(request.app.state, "rag_ready", False),
+    }

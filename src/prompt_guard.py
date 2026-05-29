@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
 
 _MAX_MESSAGE_LEN  = int(os.getenv("MAX_MESSAGE_LEN",   "2000"))
 _MAX_PROMPT_TOKENS = int(os.getenv("MAX_PROMPT_TOKENS", "2048"))
@@ -23,6 +24,12 @@ _INJECTION_PATTERNS = re.compile(
 )
 
 
+def _normalize(text: str) -> str:
+    """NFKC-normalize and collapse whitespace to defeat encoding/spacing bypass attempts."""
+    text = unicodedata.normalize("NFKC", text)
+    return re.sub(r"\s+", " ", text)
+
+
 def validate_message(message: str) -> str:
     stripped = message.strip()
     if not stripped:
@@ -31,7 +38,7 @@ def validate_message(message: str) -> str:
         raise ValueError(
             f"Message too long ({len(stripped)} chars). Maximum is {_MAX_MESSAGE_LEN}."
         )
-    if _INJECTION_PATTERNS.search(stripped):
+    if _INJECTION_PATTERNS.search(_normalize(stripped)):
         raise ValueError("Message contains disallowed content.")
     return stripped
 

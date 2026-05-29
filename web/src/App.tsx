@@ -1,4 +1,5 @@
-import { createContext, useContext, useState } from 'react'
+import { Component, createContext, useContext, useState } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import Login from './pages/Login'
@@ -7,6 +8,33 @@ import Dashboard from './pages/Dashboard'
 import Users from './pages/Users'
 import ProtectedRoute from './components/ProtectedRoute'
 import { AuthUser } from './types'
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[ErrorBoundary]', error, info)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <h2>Something went wrong.</h2>
+          <button onClick={() => window.location.reload()}>Reload</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 interface AuthCtx {
   user: AuthUser | null
@@ -41,6 +69,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <AuthContext.Provider value={{ user, login, logout }}>
       <Toaster position="bottom-right" theme="dark" richColors />
       <BrowserRouter>
@@ -53,5 +82,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthContext.Provider>
+    </ErrorBoundary>
   )
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from urllib.parse import quote_plus
 
@@ -17,6 +18,8 @@ _FORBIDDEN = (
     exp.Alter, exp.TruncateTable, exp.Merge, exp.Command,
 )
 
+_BLOCKED_SCHEMAS = frozenset({"information_schema", "sys", "sysobjects", "sysobjects"})
+
 
 def _assert_select_only(sql: str) -> None:
     try:
@@ -32,6 +35,13 @@ def _assert_select_only(sql: str) -> None:
     for node in trees[0].walk():
         if isinstance(node, _FORBIDDEN):
             raise PermissionError(f"Read-only store: {type(node).__name__} statements are not permitted.")
+        if isinstance(node, exp.Table):
+            db_part = (node.args.get("db") or node.args.get("catalog") or exp.Identifier(this="")).name
+            tbl_part = node.name
+            if db_part.lower() in _BLOCKED_SCHEMAS or tbl_part.lower() in _BLOCKED_SCHEMAS:
+                raise PermissionError(
+                    f"Read-only store: access to '{db_part or tbl_part}' is not permitted."
+                )
 
 
 def _build_engine(database: str) -> Engine:
@@ -68,22 +78,25 @@ class _TTLCache:
         self._store: dict = {}
         self._ttl = ttl
         self._maxsize = maxsize
+        self._lock = threading.Lock()
 
     def get(self, key: str):
-        entry = self._store.get(key)
-        if entry is None:
-            return None
-        value, expires = entry
-        if time.monotonic() > expires:
-            self._store.pop(key, None)
-            return None
-        return value
+        with self._lock:
+            entry = self._store.get(key)
+            if entry is None:
+                return None
+            value, expires = entry
+            if time.monotonic() > expires:
+                self._store.pop(key, None)
+                return None
+            return value
 
     def set(self, key: str, value) -> None:
-        if self._maxsize > 0 and len(self._store) >= self._maxsize and key not in self._store:
-            oldest = min(self._store, key=lambda k: self._store[k][1])
-            del self._store[oldest]
-        self._store[key] = (value, time.monotonic() + self._ttl)
+        with self._lock:
+            if self._maxsize > 0 and len(self._store) >= self._maxsize and key not in self._store:
+                oldest = min(self._store, key=lambda k: self._store[k][1])
+                del self._store[oldest]
+            self._store[key] = (value, time.monotonic() + self._ttl)
 
 
 def _ph(n: int) -> str:
@@ -113,10 +126,16 @@ class SQLDataStore:
         self._engines: dict[str, Engine] = {db: _build_engine(db) for db in self._databases}
         self._cache = _TTLCache(ttl=300)
 
+    @staticmethod
+    def _q(name: str) -> str:
+        """Bracket-quote a SQL Server identifier."""
+        return f"[{name.replace(']', ']]')}]"
+
     def _build_period_clause(
         self, period: str, date_from: str | None, date_to: str | None, params: list
     ) -> str:
-        dc, t = self._date_col, self._table
+        dc = self._q(self._date_col)
+        t  = self._q(self._table)
         if date_from or date_to:
             parts: list[str] = []
             if date_from: parts.append(f"AND {dc} >= ?"); params.append(date_from)
@@ -132,11 +151,13 @@ class SQLDataStore:
         return ""
 
     def _build_group_expr(self) -> dict[str, tuple[str, str]]:
-        dc = self._date_col
+        dc  = self._q(self._date_col)
+        ec  = self._q(self._entity_col)
         expr: dict[str, tuple[str, str]] = {}
         for col in self._group_cols:
-            expr[col] = (col, col)
-        expr[self._entity_col] = (f"CAST({self._entity_col} AS NVARCHAR(50))", self._entity_col)
+            qcol = self._q(col)
+            expr[col] = (qcol, col)
+        expr[self._entity_col] = (f"CAST({ec} AS NVARCHAR(50))", self._entity_col)
         expr["week"] = (
             f"CONVERT(NVARCHAR(10),DATEADD(dd,1-DATEPART(dw,{dc}),{dc}),23)"
             f"+'/'+"
@@ -188,8 +209,11 @@ class SQLDataStore:
         if cached is not None:
             return cached
 
-        t, mc, pv = self._table, self._metric_col, self._positive_val
-        dc, ec    = self._date_col, self._entity_col
+        t  = self._q(self._table)
+        mc = self._q(self._metric_col)
+        dc = self._q(self._date_col)
+        ec = self._q(self._entity_col)
+        pv = self._positive_val
         df = self._query(f"""
         SELECT
             COUNT(*)                                                          AS total_records,
@@ -206,9 +230,10 @@ class SQLDataStore:
             return {"status": "no_data"}
 
         first_dim = self._group_cols[0] if self._group_cols else None
+        first_dim_q = self._q(first_dim) if first_dim else None
         dims_df = self._query(
-            f"SELECT DISTINCT {first_dim} FROM {t} "
-            f"WHERE {first_dim} IS NOT NULL ORDER BY {first_dim}"
+            f"SELECT DISTINCT {first_dim_q} FROM {t} "
+            f"WHERE {first_dim_q} IS NOT NULL ORDER BY {first_dim_q}"
         ) if first_dim else pd.DataFrame()
 
         row = df.iloc[0]
@@ -218,7 +243,7 @@ class SQLDataStore:
             "date_range":            {"from": str(row["date_from"]), "to": str(row["date_to"])},
             "metric_rate":           float(row["metric_rate"]),
             "below_threshold_count": int(row["below_threshold_count"]),
-            "dimensions":            dims_df[first_dim].tolist() if first_dim and not dims_df.empty else [],
+            "dimensions":            dims_df[first_dim].tolist() if first_dim and not dims_df.empty else [],  # noqa: E501
         }
         self._cache.set("summary:all", result)
         return result
@@ -241,14 +266,17 @@ class SQLDataStore:
         if group_by not in self._group_expr:
             raise ValueError(f"Invalid group_by '{group_by}'. Valid: {', '.join(self._group_expr)}")
         col_expr, col_alias = self._group_expr[group_by]
-        t, mc, pv, dc = self._table, self._metric_col, self._positive_val, self._date_col
+        t  = self._q(self._table)
+        mc = self._q(self._metric_col)
+        pv = self._positive_val
         params: list = [pv, pv]
 
         period_clause = self._build_period_clause(period, date_from, date_to, params)
 
         segment_clause = ""
         if segments and self._group_cols:
-            segment_clause = f"AND {self._group_cols[0]} IN ({_ph(len(segments))})"
+            grp0_q = self._q(self._group_cols[0])
+            segment_clause = f"AND {grp0_q} IN ({_ph(len(segments))})"
             params.extend(segments)
 
         result = self._query(f"""
@@ -282,14 +310,18 @@ class SQLDataStore:
         if cached is not None:
             return cached
 
-        t, mc, pv, dc = self._table, self._metric_col, self._positive_val, self._date_col
-        ec, enc       = self._entity_col, self._entity_name_col
-        grp0          = self._group_cols[0] if self._group_cols else None
+        t   = self._q(self._table)
+        mc  = self._q(self._metric_col)
+        ec  = self._q(self._entity_col)
+        enc = self._q(self._entity_name_col)
+        pv  = self._positive_val
+        grp0     = self._group_cols[0] if self._group_cols else None
+        grp0_q   = self._q(grp0) if grp0 else None
         params: list  = [pv, pv]
 
         segment_clause = ""
-        if segments and grp0:
-            segment_clause = f"AND {grp0} IN ({_ph(len(segments))})"
+        if segments and grp0_q:
+            segment_clause = f"AND {grp0_q} IN ({_ph(len(segments))})"
             params.extend(segments)
 
         date_clause = self._build_period_clause("", date_from, date_to, params)
@@ -300,7 +332,7 @@ class SQLDataStore:
         SELECT
             {ec}                                                              AS entity_id,
             MAX({enc})                                                        AS label,
-            {f"MAX({grp0})" if grp0 else "NULL"}                             AS group_name,
+            {f"MAX({grp0_q})" if grp0_q else "NULL"}                         AS group_name,
             COUNT(*)                                                          AS total,
             SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)                         AS positive_count,
             ROUND(100.0*SUM(CASE WHEN {mc}=? THEN 1 ELSE 0 END)
@@ -326,7 +358,10 @@ class SQLDataStore:
         if cached is not None:
             return cached
 
-        t, mc, pv, dc, ec = self._table, self._metric_col, self._positive_val, self._date_col, self._entity_col
+        t   = self._q(self._table)
+        mc  = self._q(self._metric_col)
+        ec  = self._q(self._entity_col)
+        pv  = self._positive_val
         week_expr = self._group_expr["week"][0]
         df = self._query(f"""
         SELECT

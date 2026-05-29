@@ -105,12 +105,16 @@ export function useDashboardData(filter: DashboardFilter): DashboardData {
           const ids = atRisk.map((s) => s.entity_id).join(',')
           api.get('/data/sparklines', { params: { ids }, signal })
             .then((r) => { if (!signal.aborted) setData((d) => ({ ...d, sparklines: r.data })) })
-            .catch(() => {})
+            .catch((e) => {
+              if (!signal.aborted) console.warn('[dashboard] sparklines fetch failed:', e)
+            })
         }
 
         api.get('/data/trends', { params: { segments: params.segments }, signal })
           .then((r) => { if (!signal.aborted) setData((d) => ({ ...d, trends: r.data })) })
-          .catch(() => {})
+          .catch((e) => {
+            if (!signal.aborted) console.warn('[dashboard] trends fetch failed:', e)
+          })
       })
       .catch(() => {
         if (!signal.aborted)

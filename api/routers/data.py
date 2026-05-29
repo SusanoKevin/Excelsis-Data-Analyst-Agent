@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from api.deps import get_current_user, get_store
+from api.limiter import limiter
 from src.security import UserContext
 
 
@@ -25,12 +26,14 @@ def _parse_segments(segments_str: str) -> list[str] | None:
 
 
 @router.get("/summary")
+@limiter.limit("30/minute")
 def summary(request: Request, response: Response, _: UserContext = Depends(get_current_user)):
     response.headers["Cache-Control"] = "private, max-age=300"
     return _call(lambda: get_store(request).summary())
 
 
 @router.get("/alerts")
+@limiter.limit("30/minute")
 def alerts(
     request: Request,
     response: Response,
@@ -52,6 +55,7 @@ def alerts(
 
 
 @router.get("/stats")
+@limiter.limit("30/minute")
 def stats(
     request: Request,
     response: Response,
@@ -75,6 +79,7 @@ def stats(
 
 
 @router.get("/trends")
+@limiter.limit("30/minute")
 def trends(
     request: Request,
     response: Response,
@@ -93,6 +98,7 @@ def trends(
 
 
 @router.get("/sparklines")
+@limiter.limit("30/minute")
 def sparklines(
     request: Request,
     response: Response,

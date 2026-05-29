@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api.auth import (
     authenticate_user, create_access_token,
     create_user, delete_user, list_users,
 )
 from api.deps import get_current_user, require_admin
+from api.limiter import limiter
 from api.models import CreateUserRequest, LoginRequest, Token, UserInfo
 from src.security import UserContext
 
@@ -12,7 +13,8 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=Token)
-def login(body: LoginRequest):
+@limiter.limit("5/minute")
+def login(body: LoginRequest, request: Request):
     user = authenticate_user(body.username, body.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
@@ -32,7 +34,10 @@ def get_users(_: UserContext = Depends(require_admin)):
 
 @router.post("/users", status_code=201)
 def add_user(body: CreateUserRequest, _: UserContext = Depends(require_admin)):
-    ok = create_user(body.username, body.password)
+    try:
+        ok = create_user(body.username, body.password)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     if not ok:
         raise HTTPException(status_code=409, detail="Username already exists")
     return {"message": f"User '{body.username}' created"}

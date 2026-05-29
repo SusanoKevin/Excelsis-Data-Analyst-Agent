@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import queue
 import threading
+import time
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
@@ -13,6 +15,10 @@ from langgraph.prebuilt import create_react_agent
 from .prompt_guard import check_token_budget
 from .security import ADMIN_USER, UserContext
 from .tools import ALL_TOOLS
+
+logger = logging.getLogger(__name__)
+
+_HISTORY_TTL = 3600  # seconds before idle user history is evicted
 
 SYSTEM_PROMPT = """You are an expert Data Analyst for Excelsis 360.
 
@@ -94,7 +100,8 @@ class ExcelsisAgent:
         )
         self._store        = store
         self._rag_store    = rag_store
-        self._history: list = []
+        # Per-user history: {user_id: {"messages": [...], "last_active": float}}
+        self._histories: dict[str, dict] = {}
         self._max_history  = max_history
         self._history_lock = threading.Lock()
 
@@ -107,20 +114,30 @@ class ExcelsisAgent:
             }
         }
 
-    def _append_history(self, human: str, ai: str) -> None:
+    def _evict_stale(self) -> None:
+        cutoff = time.monotonic() - _HISTORY_TTL
+        stale = [uid for uid, h in self._histories.items() if h["last_active"] < cutoff]
+        for uid in stale:
+            del self._histories[uid]
+
+    def _append_history(self, user_id: str, human: str, ai: str) -> None:
         with self._history_lock:
-            self._history.append(HumanMessage(content=human))
-            self._history.append(AIMessage(content=ai))
-            if len(self._history) > self._max_history * 2:
-                self._history = self._history[-(self._max_history * 2):]
+            self._evict_stale()
+            entry = self._histories.setdefault(user_id, {"messages": [], "last_active": 0.0})
+            entry["messages"].append(HumanMessage(content=human))
+            entry["messages"].append(AIMessage(content=ai))
+            if len(entry["messages"]) > self._max_history * 2:
+                entry["messages"] = entry["messages"][-(self._max_history * 2):]
+            entry["last_active"] = time.monotonic()
 
     def _prepare(self, message: str, user: UserContext | None) -> tuple[dict, list]:
         user   = user or ADMIN_USER
         config = self._build_config(user)
         with self._history_lock:
-            history       = list(self._history[-(self._max_history * 2):])
+            entry         = self._histories.get(user.user_id, {"messages": []})
+            history       = list(entry["messages"][-(self._max_history * 2):])
             history_chars = sum(len(m.content) for m in history)
-            messages      = history[-self._max_history:] + [HumanMessage(content=message)]
+            messages      = history + [HumanMessage(content=message)]
         check_token_budget(message, history_chars)
         return config, messages
 
@@ -132,6 +149,7 @@ class ExcelsisAgent:
             try:
                 result_q.put(("ok", self._graph.invoke({"messages": messages}, config=config)))
             except Exception as e:
+                logger.exception("Agent invoke failed for user=%s", config["configurable"]["user_context"].user_id)
                 result_q.put(("err", e))
 
         t = threading.Thread(target=_run, daemon=True)
@@ -147,7 +165,7 @@ class ExcelsisAgent:
 
         final  = value["messages"][-1]
         answer = final.content if isinstance(final, AIMessage) else str(final)
-        self._append_history(query, answer)
+        self._append_history(user.user_id, query, answer)
         return answer
 
     async def astream_events(self, message: str, user: UserContext | None = None):
@@ -196,5 +214,5 @@ class ExcelsisAgent:
             yield {"type": "error", "message": "Request timed out. The model may be busy — please try again."}
             return
 
-        self._append_history(message, full)
+        self._append_history((user or ADMIN_USER).user_id, message, full)
 
