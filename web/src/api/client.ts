@@ -1,11 +1,15 @@
 import axios from 'axios'
 import { DashboardFilterEvent, ToolTable } from '../types'
 
+const getAuthHeader = (): Record<string, string> => {
+  const t = localStorage.getItem('token')
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
 const api = axios.create({ baseURL: '/' })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  Object.assign(config.headers, getAuthHeader())
   return config
 })
 
@@ -22,7 +26,7 @@ api.interceptors.response.use(
 
 export default api
 
-const STREAM_TIMEOUT_MS = 60_000
+const STREAM_TIMEOUT_MS = 270_000
 
 export async function streamChat(
   message: string,
@@ -37,15 +41,11 @@ export async function streamChat(
   const controller = new AbortController()
   const timeoutId  = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS)
 
-  const token = localStorage.getItem('token')
   let res: Response
   try {
     res = await fetch('/chat/stream', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify({ message }),
       signal: controller.signal,
     })

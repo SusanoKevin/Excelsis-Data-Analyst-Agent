@@ -6,19 +6,18 @@ import logging
 import os
 import queue
 import threading
-import time
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.prebuilt import create_react_agent
 
 from .prompt_guard import check_token_budget
 from .security import ADMIN_USER, UserContext
 from .tools import ALL_TOOLS
+from .tracker import QueryTracker
 
 logger = logging.getLogger(__name__)
-
-_HISTORY_TTL = 3600  # seconds before idle user history is evicted
 
 SYSTEM_PROMPT = """You are an expert Data Analyst for Excelsis 360.
 
@@ -92,64 +91,42 @@ _llm = ChatOllama(
 
 
 class ExcelsisAgent:
-    def __init__(self, store=None, rag_store=None, max_history: int = 10) -> None:
+    def __init__(self, store=None, rag_store=None) -> None:
+        self._checkpointer = SqliteSaver.from_conn_string(os.getenv("CHAT_DB", "./chat.db"))
         self._graph = create_react_agent(
             model=_llm,
             tools=ALL_TOOLS,
             prompt=SystemMessage(content=SYSTEM_PROMPT),
+            checkpointer=self._checkpointer,
         )
-        self._store        = store
-        self._rag_store    = rag_store
-        # Per-user history: {user_id: {"messages": [...], "last_active": float}}
-        self._histories: dict[str, dict] = {}
-        self._max_history  = max_history
-        self._history_lock = threading.Lock()
+        self._store     = store
+        self._rag_store = rag_store
 
     def _build_config(self, user: UserContext) -> dict:
         return {
             "configurable": {
-                "user_context": user,
-                "store":        self._store,
-                "rag_store":    self._rag_store,
+                "thread_id": user.user_id,
+                "store":     self._store,
+                "rag_store": self._rag_store,
             }
         }
 
-    def _evict_stale(self) -> None:
-        cutoff = time.monotonic() - _HISTORY_TTL
-        stale = [uid for uid, h in self._histories.items() if h["last_active"] < cutoff]
-        for uid in stale:
-            del self._histories[uid]
-
-    def _append_history(self, user_id: str, human: str, ai: str) -> None:
-        with self._history_lock:
-            self._evict_stale()
-            entry = self._histories.setdefault(user_id, {"messages": [], "last_active": 0.0})
-            entry["messages"].append(HumanMessage(content=human))
-            entry["messages"].append(AIMessage(content=ai))
-            if len(entry["messages"]) > self._max_history * 2:
-                entry["messages"] = entry["messages"][-(self._max_history * 2):]
-            entry["last_active"] = time.monotonic()
-
     def _prepare(self, message: str, user: UserContext | None) -> tuple[dict, list]:
-        user   = user or ADMIN_USER
-        config = self._build_config(user)
-        with self._history_lock:
-            entry         = self._histories.get(user.user_id, {"messages": []})
-            history       = list(entry["messages"][-(self._max_history * 2):])
-            history_chars = sum(len(m.content) for m in history)
-            messages      = history + [HumanMessage(content=message)]
-        check_token_budget(message, history_chars)
-        return config, messages
+        user = user or ADMIN_USER
+        check_token_budget(message)
+        return self._build_config(user), [HumanMessage(content=message)]
 
     def ask(self, query: str, user: UserContext | None = None) -> str:
         config, messages = self._prepare(query, user)
+        tracker = QueryTracker()
+        tracker.start((user or ADMIN_USER).user_id, query)
         result_q: queue.Queue = queue.Queue()
 
         def _run() -> None:
             try:
                 result_q.put(("ok", self._graph.invoke({"messages": messages}, config=config)))
             except Exception as e:
-                logger.exception("Agent invoke failed for user=%s", config["configurable"]["user_context"].user_id)
+                logger.exception("Agent invoke failed for user=%s", config["configurable"]["thread_id"])
                 result_q.put(("err", e))
 
         t = threading.Thread(target=_run, daemon=True)
@@ -157,20 +134,25 @@ class ExcelsisAgent:
         t.join(timeout=_TIMEOUT)
 
         if t.is_alive():
+            tracker.record_error()
+            tracker.finish()
             return "Sorry, the request timed out. The model may be busy — please try again."
 
         status, value = result_q.get()
         if status == "err":
+            tracker.record_error()
+            tracker.finish()
             raise value
 
         final  = value["messages"][-1]
         answer = final.content if isinstance(final, AIMessage) else str(final)
-        self._append_history(user.user_id, query, answer)
+        tracker.finish()
         return answer
 
     async def astream_events(self, message: str, user: UserContext | None = None):
         config, messages = self._prepare(message, user)
-        full = ""
+        tracker = QueryTracker()
+        tracker.start((user or ADMIN_USER).user_id, message)
 
         try:
             async with asyncio.timeout(_TIMEOUT):
@@ -184,11 +166,13 @@ class ExcelsisAgent:
                     if kind == "on_chat_model_stream":
                         chunk = event.get("data", {}).get("chunk")
                         if chunk and hasattr(chunk, "content") and chunk.content:
-                            full += chunk.content
+                            tracker.record_tokens(len(chunk.content))
                             yield {"type": "token", "content": chunk.content}
 
                     elif kind == "on_tool_start":
-                        yield {"type": "tool_start", "tool": event.get("name", "")}
+                        name = event.get("name", "")
+                        tracker.record_tool(name)
+                        yield {"type": "tool_start", "tool": name}
 
                     elif kind == "on_tool_end":
                         name = event.get("name", "")
@@ -211,8 +195,9 @@ class ExcelsisAgent:
                             yield {"type": "tool_data", "tool": name, **artifact}
 
         except asyncio.TimeoutError:
+            tracker.record_error()
             yield {"type": "error", "message": "Request timed out. The model may be busy — please try again."}
             return
 
-        self._append_history((user or ADMIN_USER).user_id, message, full)
-
+        finally:
+            tracker.finish()

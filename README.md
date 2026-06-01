@@ -16,7 +16,8 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 - **Agent ↔ dashboard link** — asking the agent to show a chart or filter the data updates the dashboard live via SSE
 - **Web UI** — React 18 + Tailwind interface with live streaming chat, KPI cards, threshold alerts table, sparkline trends, and user management
 - **REST API** — FastAPI backend with JWT auth, SSE streaming, and rate limiting
-- **Rate limiting** — chat endpoint capped at 10 requests/minute per user/IP (slowapi)
+- **Rate limiting** — chat endpoint capped at 10 requests/minute per user/IP (slowapi); Redis-backed (`REDIS_URI`) for accurate limits across multiple workers, falls back to in-memory for single-worker deployments
+- **Persistent conversation history** — per-user chat history stored in a SQLite file (`CHAT_DB`) via LangGraph's `SqliteSaver` checkpointer; survives restarts and is shared across Uvicorn workers
 - **Jupyter notebook** — full interactive analysis environment that shares the same `src/` backend
 - **MCP server** — exposes Excelsis360 data tools to Claude Code via FastMCP
 
@@ -36,7 +37,8 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 | Data wrangling | pandas + numpy |
 | Vector DB | ChromaDB (persistent) |
 | Embeddings | `BAAI/bge-small-en-v1.5` via HuggingFace (auto-downloaded) |
-| Rate limiter | slowapi |
+| Rate limiter | slowapi + Redis (`REDIS_URI`, optional) |
+| Conversation history | LangGraph `SqliteSaver` (`chat.db`) |
 
 ---
 
@@ -178,7 +180,9 @@ Default credentials: `admin` / the value of `ADMIN_PASSWORD` in your `.env` (def
 | `ENTITY_NAME_COLUMN` | No | `entity_name` | Human-readable entity name column |
 | `GROUP_COLUMNS` | No | `` | Comma-separated grouping columns |
 | `CHROMA_PATH` | No | `.chroma` | Persistent ChromaDB directory path |
-| `EMBED_MODEL` | No | `nomic-embed-text` | Ollama embedding model for RAG |
+| `EMBED_MODEL` | No | `BAAI/bge-small-en-v1.5` | HuggingFace embedding model for RAG (auto-downloaded) |
+| `CHAT_DB` | No | `./chat.db` | SQLite file for persistent per-user conversation history |
+| `REDIS_URI` | No | `` | Redis connection URI for shared rate-limit counters across workers (e.g. `redis://localhost:6379`) |
 | `DOCS_PATH` | No | `docs` | Directory scanned for policy documents |
 | `MAX_MESSAGE_LEN` | No | `2000` | Maximum characters allowed in a single chat message |
 | `MAX_PROMPT_TOKENS` | No | `2048` | Maximum estimated tokens (message + history) before rejection |

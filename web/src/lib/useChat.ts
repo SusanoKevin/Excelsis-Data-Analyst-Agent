@@ -26,10 +26,11 @@ export function useChat(onDashboardFilter?: (f: DashboardFilterEvent) => void) {
     }
   }, [messages])
 
-  const updateLast = (patch: Partial<Message>) =>
+  const updateLast = (patch: Partial<Message> | ((m: Message) => Partial<Message>)) =>
     setMessages((prev) => {
       const msgs = [...prev]
-      msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...patch }
+      const last = msgs[msgs.length - 1]
+      msgs[msgs.length - 1] = { ...last, ...(typeof patch === 'function' ? patch(last) : patch) }
       return msgs
     })
 
@@ -41,29 +42,13 @@ export function useChat(onDashboardFilter?: (f: DashboardFilterEvent) => void) {
 
     await streamChat(
       q,
-      (token) => setMessages((prev) => {
-        const msgs = [...prev]
-        const last = msgs[msgs.length - 1]
-        msgs[msgs.length - 1] = { ...last, content: last.content + token }
-        return msgs
-      }),
-      (tool) => setMessages((prev) => {
-        const msgs = [...prev]
-        const last = msgs[msgs.length - 1]
-        if (!last.toolsUsed.includes(tool))
-          msgs[msgs.length - 1] = { ...last, toolsUsed: [...last.toolsUsed, tool] }
-        return msgs
-      }),
+      (token) => updateLast((m) => ({ content: m.content + token })),
+      (tool)  => updateLast((m) => m.toolsUsed.includes(tool) ? {} : { toolsUsed: [...m.toolsUsed, tool] }),
       () => {},
       () => { updateLast({ isStreaming: false }); setStreaming(false) },
       (msg) => { updateLast({ content: msg, isStreaming: false }); setStreaming(false) },
       (f) => { updateLast({ dashboardFilter: f }); onDashboardFilter?.(f) },
-      (table) => setMessages((prev) => {
-        const msgs = [...prev]
-        const last = msgs[msgs.length - 1]
-        msgs[msgs.length - 1] = { ...last, toolData: [...(last.toolData ?? []), table] }
-        return msgs
-      }),
+      (table) => updateLast((m) => ({ toolData: [...(m.toolData ?? []), table] })),
     )
   }
 

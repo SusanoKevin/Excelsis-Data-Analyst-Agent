@@ -35,7 +35,7 @@ def ingest_schemas(
 
     for db in sql_store.databases:
         try:
-            df = sql_store._query(
+            df = sql_store._exec(
                 """
                 SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME,
                        DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE

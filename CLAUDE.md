@@ -93,6 +93,8 @@ Key optional variables:
 - `MODEL` — default `qwen2.5:14b`; Ollama model used by the ReAct agent
 - `AT_RISK_THRESHOLD` — default `75.0`
 - `ADMIN_PASSWORD` — default `admin123`; sets the initial admin password on first run
+- `CHAT_DB` — default `./chat.db`; SQLite file for LangGraph `SqliteSaver` conversation history (persists across restarts, shared across workers)
+- `REDIS_URI` — no default (empty); Redis URI for shared rate-limit counters (e.g. `redis://localhost:6379`); falls back to per-process in-memory when unset
 
 Schema / domain config (all optional, override to point at any tabular SQL schema):
 - `PRIMARY_TABLE` — default `attendance`; main table the agent queries
@@ -174,9 +176,9 @@ The `/chat/stream` endpoint uses SSE (`StreamingResponse`); the frontend consume
 
 Two functions gate every message before it reaches the agent:
 - `validate_message(message)` — strips whitespace, rejects empty strings, enforces `MAX_MESSAGE_LEN` (default 2000 chars), and scans for injection patterns (e.g. "ignore previous instructions", "jailbreak", "DAN"). Returns the stripped message or raises `ValueError`.
-- `check_token_budget(message, history_chars)` — estimates token count as `(len(message) + history_chars) // 4` and raises `ValueError` if it exceeds `MAX_PROMPT_TOKENS` (default 2048).
+- `check_token_budget(message, history_chars=0)` — estimates token count as `(len(message) + history_chars) // 4` and raises `ValueError` if it exceeds `MAX_PROMPT_TOKENS` (default 2048). Called from `ExcelsisAgent._prepare` with only `message` (history is now managed by the LangGraph checkpointer, not tracked separately).
 
-Both are called in `api/routers/chat.py` before streaming and in `ExcelsisAgent.ask` / `astream_events` before the LangGraph loop.
+`validate_message` is called in `api/routers/chat.py` before streaming. `check_token_budget` is called in `ExcelsisAgent._prepare`.
 
 ### Security (`src/security.py`)
 
@@ -186,9 +188,13 @@ Both are called in `api/routers/chat.py` before streaming and in `ExcelsisAgent.
 
 Users are stored as bcrypt-hashed records in `api/users.json`. On startup, `ensure_default_admin()` creates the admin account if missing. JWTs embed only `sub` (username) and `exp` (expiry); `decode_token()` reconstructs a `UserContext(user_id=username)` from them. Token TTL is 24 hours.
 
+### Agent (`src/agent.py`)
+
+`ExcelsisAgent` wraps a LangGraph `create_react_agent` graph. Conversation history is persisted per-user via a LangGraph `SqliteSaver` checkpointer pointed at `CHAT_DB` (default `./chat.db`). Each user's history is keyed by `thread_id=user.user_id` in the graph config; the checkpointer loads and saves state automatically on every call. No in-process history dict, lock, or eviction loop — those were removed. The `ask()` sync path uses a daemon thread + `queue.Queue` to enforce the `_TIMEOUT = 240` s deadline. The `astream_events()` async path uses `asyncio.timeout`.
+
 ### RAG layer (`src/rag_store.py` + `src/rag_ingestor.py`)
 
-`ExcelsisRAGStore` holds two ChromaDB collections: `excelsis_schema` (SQL table/column metadata, 6 results) and `excelsis_policy` (policy documents, 4 results). Embeddings use `nomic-embed-text` via Ollama. On startup, a background daemon thread runs `ExcelsisRAGIngestor`, which indexes every `.pdf` and `.md` file under `DOCS_PATH` and auto-ingests `INFORMATION_SCHEMA` for all databases in `SQL_DATABASES`. Chunk size: 800 chars, overlap: 80.
+`ExcelsisRAGStore` holds two ChromaDB collections: `excelsis_schema` (SQL table/column metadata, 6 results) and `excelsis_policy` (policy documents, 4 results). Embeddings use `BAAI/bge-small-en-v1.5` via HuggingFace (auto-downloaded, no Ollama pull needed). On startup, a background thread runs `run_ingestion`, which indexes every `.pdf` and `.md` file under `DOCS_PATH` and auto-ingests `INFORMATION_SCHEMA` for all databases via `sql_store._exec` (bypasses the read-only guard, which would otherwise block system schema queries). Chunk size: 800 chars, overlap: 80.
 
 ### MCP server (`src/mcp_server.py`)
 
@@ -206,4 +212,6 @@ The server exposes two interaction modes:
 
 ### Data backend (`src/sql_store.py`)
 
-`SQLDataStore` connects to SQL Server via SQLAlchemy (`mssql+pyodbc`) with a `QueuePool` connection pool (one engine per database, created at startup). Pool size and per-query timeout are controlled by `SQL_POOL_SIZE` (default `5`) and `SQL_QUERY_TIMEOUT` (default `30` s). All other connection settings come from env vars: `SQL_SERVER`, `SQL_DATABASES`, `SQL_PRIMARY_DB`, `SQL_AUTH_METHOD`, `SQL_USERNAME`, `SQL_PASSWORD`. The table and column names are fully configurable via `PRIMARY_TABLE`, `METRIC_COLUMN`, `POSITIVE_VALUE`, `DATE_COLUMN`, `ENTITY_COLUMN`, `ENTITY_NAME_COLUMN`, and `GROUP_COLUMNS` — code defaults are `status`, `active`, `date`, `entity_id`, `entity_name`, and empty (no grouping); `PRIMARY_TABLE` has no default and must be set. The agent can also query other databases listed in `SQL_DATABASES` via the `run_sql_query` tool's `database` parameter. All queries are read-only; writes are blocked via `sqlglot` parse-time validation. `store.close()` disposes all engines and is called automatically on FastAPI lifespan shutdown.
+`SQLDataStore` connects to SQL Server via SQLAlchemy (`mssql+pyodbc`) with a `QueuePool` connection pool (one engine per database, created at startup). Pool size and per-query timeout are controlled by `SQL_POOL_SIZE` (default `5`) and `SQL_QUERY_TIMEOUT` (default `30` s). All other connection settings come from env vars: `SQL_SERVER`, `SQL_DATABASES`, `SQL_PRIMARY_DB`, `SQL_AUTH_METHOD`, `SQL_USERNAME`, `SQL_PASSWORD`. The table and column names are fully configurable via `PRIMARY_TABLE`, `METRIC_COLUMN`, `POSITIVE_VALUE`, `DATE_COLUMN`, `ENTITY_COLUMN`, `ENTITY_NAME_COLUMN`, and `GROUP_COLUMNS` — code defaults are `status`, `active`, `date`, `entity_id`, `entity_name`, and empty (no grouping); `PRIMARY_TABLE` has no default and must be set. The agent can also query other databases listed in `SQL_DATABASES` via the `run_sql_query` tool's `database` parameter.
+
+Two internal execution methods exist: `_exec(sql, params, database)` is the trusted pool executor used by all internal methods (`summary`, `compute_stats`, `get_threshold_alerts`, etc.); `_query(sql, params, database)` wraps `_exec` with `_assert_select_only` — a `sqlglot` parse-time guard that blocks DML/DDL and system schemas. Only the `run_sql_query` tool (which receives LLM-provided SQL) calls `_query`; all hardcoded internal SQL goes through `_exec` directly. `store.close()` disposes all engines and is called automatically on FastAPI lifespan shutdown.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 
 from langchain_chroma import Chroma
@@ -42,7 +43,7 @@ class ExcelsisRAGStore:
         return self._policy_vs
 
     def _retrieve(self, prefix: str, vs, k: int, not_found: str, query: str) -> str:
-        key    = f"{prefix}:{hash(query)}"
+        key    = f"{prefix}:{hashlib.sha256(query.encode()).hexdigest()}"
         cached = self._cache.get(key)
         if cached is not None:
             return cached

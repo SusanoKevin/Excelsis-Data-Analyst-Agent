@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
 import time
@@ -18,7 +19,7 @@ _FORBIDDEN = (
     exp.Alter, exp.TruncateTable, exp.Merge, exp.Command,
 )
 
-_BLOCKED_SCHEMAS = frozenset({"information_schema", "sys", "sysobjects", "sysobjects"})
+_BLOCKED_SCHEMAS = frozenset({"information_schema", "sys", "sysobjects"})
 
 
 def _assert_select_only(sql: str) -> None:
@@ -124,7 +125,9 @@ class SQLDataStore:
         ]
         self._group_expr = self._build_group_expr()
         self._engines: dict[str, Engine] = {db: _build_engine(db) for db in self._databases}
-        self._cache = _TTLCache(ttl=300)
+        _sql_ttl     = int(os.environ.get("SQL_CACHE_TTL", "300"))
+        _sql_maxsize = int(os.environ.get("SQL_CACHE_MAX_SIZE", "512"))
+        self._cache  = _TTLCache(ttl=_sql_ttl, maxsize=_sql_maxsize)
 
     @staticmethod
     def _q(name: str) -> str:
@@ -181,20 +184,21 @@ class SQLDataStore:
             raise RuntimeError("PRIMARY_TABLE is not configured. Set PRIMARY_TABLE in your .env file.")
         return self._table
 
-    def _query(self, sql: str, params: tuple = (), database: str | None = None) -> pd.DataFrame:
-        _assert_select_only(sql)
+    def _exec(self, sql: str, params: tuple = (), database: str | None = None) -> pd.DataFrame:
+        """Trusted internal executor — no parse-time guard. Use _query for LLM-provided SQL."""
         target_db = database or self._primary_db
         if target_db not in self._databases:
             raise PermissionError(f"Database '{target_db}' is not in the configured allowlist.")
-        conn = self._engines[target_db].raw_connection()
-        try:
+        with contextlib.closing(self._engines[target_db].raw_connection()) as conn:
             return pd.read_sql(sql, conn, params=params or None)
-        finally:
-            conn.close()
+
+    def _query(self, sql: str, params: tuple = (), database: str | None = None) -> pd.DataFrame:
+        _assert_select_only(sql)
+        return self._exec(sql, params, database)
 
     def ping(self, database: str | None = None) -> bool:
         try:
-            self._query("SELECT 1", database=database)
+            self._exec("SELECT 1", database=database)
             return True
         except Exception:
             return False
@@ -214,7 +218,7 @@ class SQLDataStore:
         dc = self._q(self._date_col)
         ec = self._q(self._entity_col)
         pv = self._positive_val
-        df = self._query(f"""
+        df = self._exec(f"""
         SELECT
             COUNT(*)                                                          AS total_records,
             COUNT(DISTINCT {ec})                                              AS entity_count,
@@ -231,7 +235,7 @@ class SQLDataStore:
 
         first_dim = self._group_cols[0] if self._group_cols else None
         first_dim_q = self._q(first_dim) if first_dim else None
-        dims_df = self._query(
+        dims_df = self._exec(
             f"SELECT DISTINCT {first_dim_q} FROM {t} "
             f"WHERE {first_dim_q} IS NOT NULL ORDER BY {first_dim_q}"
         ) if first_dim else pd.DataFrame()
@@ -279,7 +283,7 @@ class SQLDataStore:
             segment_clause = f"AND {grp0_q} IN ({_ph(len(segments))})"
             params.extend(segments)
 
-        result = self._query(f"""
+        result = self._exec(f"""
         SELECT
             {col_expr}  AS [{col_alias}],
             COUNT(*)                                                          AS total,
@@ -328,7 +332,7 @@ class SQLDataStore:
         params.append(pv)
         params.append(threshold)
 
-        result = self._query(f"""
+        result = self._exec(f"""
         SELECT
             {ec}                                                              AS entity_id,
             MAX({enc})                                                        AS label,
@@ -363,7 +367,7 @@ class SQLDataStore:
         ec  = self._q(self._entity_col)
         pv  = self._positive_val
         week_expr = self._group_expr["week"][0]
-        df = self._query(f"""
+        df = self._exec(f"""
         SELECT
             {ec}                                        AS entity_id,
             {week_expr}                                 AS week,

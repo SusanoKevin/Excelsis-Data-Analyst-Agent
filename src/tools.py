@@ -19,14 +19,9 @@ def _df_to_text(df: pd.DataFrame, max_rows: int = 50) -> str:
 
 
 def _df_to_artifact(df: pd.DataFrame, max_rows: int = 50) -> dict:
-    trimmed = df.head(max_rows)
-    data = json.loads(trimmed.to_json(orient="split"))
-    return {
-        "columns":    data["columns"],
-        "rows":       data["data"],
-        "truncated":  len(df) > max_rows,
-        "total_rows": len(df),
-    }
+    chunk = json.loads(df.head(max_rows).to_json(orient="split"))
+    return {"columns": chunk["columns"], "rows": chunk["data"],
+            "truncated": len(df) > max_rows, "total_rows": len(df)}
 
 
 def _store(config: RunnableConfig):
@@ -171,10 +166,9 @@ def compare_periods(
     period_a, period_b: 'all' | 'last_7_days' | 'last_30_days'
     Example: compare_periods(period_a='last_7_days', period_b='last_30_days')
     """
-    if period_a not in _VALID_PERIODS:
-        return f"Invalid period_a '{period_a}': must be one of 'all', 'last_7_days', 'last_30_days'.", {}
-    if period_b not in _VALID_PERIODS:
-        return f"Invalid period_b '{period_b}': must be one of 'all', 'last_7_days', 'last_30_days'.", {}
+    for name, val in [("period_a", period_a), ("period_b", period_b)]:
+        if val not in _VALID_PERIODS:
+            return f"Invalid {name} '{val}': must be one of 'all', 'last_7_days', 'last_30_days'.", {}
     store = _store(config)
     if store is None:
         return "No data store connected.", {}

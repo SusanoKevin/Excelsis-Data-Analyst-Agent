@@ -1,1414 +1,741 @@
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
+"""
+generate_docs.py — Regenerates "Excelsis 360 Analyst Agent.pdf"
+Run: python generate_docs.py
+"""
 from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import cm
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, PageBreak, KeepTogether, Preformatted,
+    HRFlowable, KeepTogether, PageBreak, Paragraph,
+    Preformatted, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
-# ── Colour palette ────────────────────────────────────────────────────────────
-CARBON     = colors.HexColor("#0d0d0d")
-SNOW       = colors.HexColor("#ffffff")
-FOG        = colors.HexColor("#f5f5f5")
-PEWTER     = colors.HexColor("#5d5d5d")
-STONE      = colors.HexColor("#8f8f8f")
-LINK_BLUE  = colors.HexColor("#007aff")
-ACCENT     = colors.HexColor("#1a1a2e")
-MUTED_BLUE = colors.HexColor("#e8f0fe")
-BORDER     = colors.HexColor("#e0e0e0")
-CODE_BG    = colors.HexColor("#f0f0f0")
-WARN       = colors.HexColor("#fff3cd")
-WARN_BORD  = colors.HexColor("#ffc107")
 
-PAGE_W, PAGE_H = A4
+W, H = A4
 MARGIN = 2.2 * cm
 
-# ── Style sheet ──────────────────────────────────────────────────────────────
-styles = getSampleStyleSheet()
+C_BLACK   = colors.HexColor("#0d0d0d")
+C_WHITE   = colors.white
+C_GREY    = colors.HexColor("#5d5d5d")
+C_LGREY   = colors.HexColor("#ececec")
+C_MGREY   = colors.HexColor("#8f8f8f")
+C_TBLHEAD = colors.HexColor("#0d0d0d")
+C_TBLALT  = colors.HexColor("#f9f9f9")
 
-def S(name, **kw):
-    return ParagraphStyle(name, **kw)
+def S(name, **kw): return ParagraphStyle(name, **kw)
 
-Title = S("DocTitle",
-    fontSize=28, leading=34, textColor=CARBON,
-    fontName="Helvetica-Bold", spaceAfter=6, alignment=TA_CENTER)
+H1   = S("h1",   fontSize=22, fontName="Helvetica-Bold", textColor=C_BLACK,
+         leading=28, spaceBefore=22, spaceAfter=10)
+H2   = S("h2",   fontSize=14, fontName="Helvetica-Bold", textColor=C_BLACK,
+         leading=18, spaceBefore=16, spaceAfter=6)
+H3   = S("h3",   fontSize=11, fontName="Helvetica-Bold", textColor=C_BLACK,
+         leading=15, spaceBefore=10, spaceAfter=4)
+BODY = S("body", fontSize=10, fontName="Helvetica", textColor=C_BLACK,
+         leading=15, spaceAfter=6)
+BSML = S("bsml", fontSize=9,  fontName="Helvetica", textColor=C_BLACK,
+         leading=13, spaceAfter=4)
+BULL = S("bull", fontSize=10, fontName="Helvetica", textColor=C_BLACK,
+         leading=14, leftIndent=14, spaceAfter=3, bulletIndent=4, bulletText="•")
+CODE = S("code", fontSize=8.5, fontName="Courier", textColor=C_BLACK,
+         leading=12, backColor=colors.HexColor("#f4f4f4"),
+         leftIndent=10, rightIndent=10, spaceBefore=4, spaceAfter=6)
+TH   = S("th",   fontSize=9, fontName="Helvetica-Bold", textColor=C_WHITE, leading=12)
+TD   = S("td",   fontSize=9, fontName="Helvetica",      textColor=C_BLACK, leading=12)
+TDC  = S("tdc",  fontSize=8.5, fontName="Courier",      textColor=C_BLACK, leading=12)
+CVSB = S("cvsb", fontSize=16, fontName="Helvetica",
+         textColor=colors.HexColor("#cccccc"), leading=22)
+CVMT = S("cvmt", fontSize=10, fontName="Helvetica-Oblique",
+         textColor=C_MGREY, leading=14, spaceBefore=30)
 
-Subtitle = S("DocSubtitle",
-    fontSize=13, leading=18, textColor=PEWTER,
-    fontName="Helvetica", alignment=TA_CENTER, spaceAfter=4)
+TS = TableStyle([
+    ("BACKGROUND",    (0,0),(-1,0),  C_TBLHEAD),
+    ("TEXTCOLOR",     (0,0),(-1,0),  C_WHITE),
+    ("FONTNAME",      (0,0),(-1,0),  "Helvetica-Bold"),
+    ("FONTSIZE",      (0,0),(-1,0),  9),
+    ("ROWBACKGROUNDS",(0,1),(-1,-1), [C_WHITE, C_TBLALT]),
+    ("FONTNAME",      (0,1),(-1,-1), "Helvetica"),
+    ("FONTSIZE",      (0,1),(-1,-1), 9),
+    ("GRID",          (0,0),(-1,-1), 0.4, C_LGREY),
+    ("VALIGN",        (0,0),(-1,-1), "TOP"),
+    ("TOPPADDING",    (0,0),(-1,-1), 5),
+    ("BOTTOMPADDING", (0,0),(-1,-1), 5),
+    ("LEFTPADDING",   (0,0),(-1,-1), 7),
+    ("RIGHTPADDING",  (0,0),(-1,-1), 7),
+])
+NS = TableStyle([
+    ("BACKGROUND",  (0,0),(-1,-1), colors.HexColor("#fffbe6")),
+    ("BOX",         (0,0),(-1,-1), 0.8, colors.HexColor("#e0c000")),
+    ("LEFTPADDING", (0,0),(-1,-1), 10),
+    ("RIGHTPADDING",(0,0),(-1,-1), 10),
+    ("TOPPADDING",  (0,0),(-1,-1), 8),
+    ("BOTTOMPADDING",(0,0),(-1,-1),8),
+])
 
-ChapterTitle = S("ChapterTitle",
-    fontSize=20, leading=26, textColor=CARBON,
-    fontName="Helvetica-Bold", spaceBefore=18, spaceAfter=8,
-    borderPadding=(0, 0, 6, 0))
+cw = W - 2 * MARGIN
 
-SectionTitle = S("SectionTitle",
-    fontSize=14, leading=20, textColor=CARBON,
-    fontName="Helvetica-Bold", spaceBefore=14, spaceAfter=6)
+def p(t, s=BODY):    return Paragraph(t, s)
+def h1(t):           return Paragraph(t, H1)
+def h2(t):           return Paragraph(t, H2)
+def h3(t):           return Paragraph(t, H3)
+def b(t):            return Paragraph(t, BULL)
+def sp(n=6):         return Spacer(1, n)
+def hr():            return HRFlowable(width="100%", thickness=0.5, color=C_LGREY, spaceAfter=6)
+def pre(t):          return Preformatted(t, CODE)
+def th(*c):          return [Paragraph(x, TH) for x in c]
+def td(*c):          return [Paragraph(x, TD) for x in c]
+def tdc(*c):         return [Paragraph(x, TDC) for x in c]
+def tbl(d, w=None):
+    t = Table(d, colWidths=w, repeatRows=1); t.setStyle(TS); return t
+def note(t):
+    inner = [[Paragraph("<b>Known Limitations</b><br/>" + t, BSML)]]
+    tb = Table(inner, colWidths=[cw]); tb.setStyle(NS); return tb
 
-SubSection = S("SubSection",
-    fontSize=11, leading=16, textColor=CARBON,
-    fontName="Helvetica-Bold", spaceBefore=10, spaceAfter=4)
-
-Body = S("DocBody",
-    fontSize=10, leading=15, textColor=CARBON,
-    fontName="Helvetica", alignment=TA_JUSTIFY, spaceAfter=6)
-
-BodyLeft = S("BodyLeft",
-    fontSize=10, leading=15, textColor=CARBON,
-    fontName="Helvetica", alignment=TA_LEFT, spaceAfter=5)
-
-Note = S("Note",
-    fontSize=9, leading=13, textColor=PEWTER,
-    fontName="Helvetica-Oblique", spaceAfter=4)
-
-CodeStyle = S("Code",
-    fontSize=8.5, leading=12, textColor=CARBON,
-    fontName="Courier", backColor=CODE_BG,
-    leftIndent=12, rightIndent=12,
-    borderPadding=(6, 8, 6, 8), spaceAfter=8)
-
-BulletStyle = S("Bullet",
-    fontSize=10, leading=15, textColor=CARBON,
-    fontName="Helvetica", leftIndent=14, spaceAfter=3)
-
-TableHeader = S("TH",
-    fontSize=9, leading=12, textColor=SNOW,
-    fontName="Helvetica-Bold", alignment=TA_LEFT)
-
-TableCell = S("TC",
-    fontSize=9, leading=13, textColor=CARBON,
-    fontName="Helvetica", alignment=TA_LEFT)
-
-TableCellMono = S("TCM",
-    fontSize=8.5, leading=12, textColor=CARBON,
-    fontName="Courier", alignment=TA_LEFT)
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-def sp(h=8):
-    return Spacer(1, h)
-
-def hr():
-    return HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=8, spaceBefore=4)
-
-def chapter(text):
-    return [PageBreak(), Paragraph(text, ChapterTitle), hr()]
-
-def section(text):
-    return [Paragraph(text, SectionTitle)]
-
-def subsection(text):
-    return [Paragraph(text, SubSection)]
-
-def body(text):
-    return Paragraph(text, Body)
-
-def body_left(text):
-    return Paragraph(text, BodyLeft)
-
-def note(text):
-    return Paragraph(f"<i>{text}</i>", Note)
-
-def bullet_list(items):
-    return [Paragraph(f"• {item}", BulletStyle) for item in items]
-
-def code_block(text):
-    return Preformatted(text, CodeStyle)
-
-def simple_table(header, rows, col_widths=None):
-    data = [[Paragraph(h, TableHeader) for h in header]]
-    for row in rows:
-        data.append([Paragraph(str(c), TableCellMono if i == 0 else TableCell)
-                     for i, c in enumerate(row)])
-    w = col_widths or ([3.5*cm] + [(PAGE_W - MARGIN*2 - 3.5*cm) / (len(header)-1)] * (len(header)-1))
-    t = Table(data, colWidths=w, repeatRows=1)
-    t.setStyle(TableStyle([
-        ("BACKGROUND",  (0,0), (-1,0),  CARBON),
-        ("TEXTCOLOR",   (0,0), (-1,0),  SNOW),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [SNOW, FOG]),
-        ("GRID",        (0,0), (-1,-1), 0.35, BORDER),
-        ("VALIGN",      (0,0), (-1,-1), "TOP"),
-        ("LEFTPADDING", (0,0), (-1,-1), 6),
-        ("RIGHTPADDING",(0,0), (-1,-1), 6),
-        ("TOPPADDING",  (0,0), (-1,-1), 5),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 5),
-    ]))
-    return t
-
-def info_box(title, items, bg=MUTED_BLUE, border=LINK_BLUE):
-    content = [Paragraph(f"<b>{title}</b>", BodyLeft)]
-    for item in items:
-        content.append(Paragraph(f"• {item}", BulletStyle))
-    t = Table([[content]], colWidths=[PAGE_W - MARGIN*2])
-    t.setStyle(TableStyle([
-        ("BACKGROUND",  (0,0), (-1,-1), bg),
-        ("BOX",         (0,0), (-1,-1), 1, border),
-        ("LEFTPADDING", (0,0), (-1,-1), 10),
-        ("RIGHTPADDING",(0,0), (-1,-1), 10),
-        ("TOPPADDING",  (0,0), (-1,-1), 8),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 8),
-        ("VALIGN",      (0,0), (-1,-1), "TOP"),
-    ]))
-    return t
-
-# ── Page template callbacks ───────────────────────────────────────────────────
-
-def header_footer(canvas, doc):
+def _cover(canvas, doc):
     canvas.saveState()
-    # Header line
-    canvas.setStrokeColor(CARBON)
-    canvas.setLineWidth(0.8)
-    canvas.line(MARGIN, PAGE_H - 1.4*cm, PAGE_W - MARGIN, PAGE_H - 1.4*cm)
-    canvas.setFont("Helvetica-Bold", 8)
-    canvas.setFillColor(CARBON)
-    canvas.drawString(MARGIN, PAGE_H - 1.2*cm, "Excelsis 360 — Data Analyst Agent")
-    canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(PEWTER)
-    canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 1.2*cm, "Technical Documentation")
-    # Footer
-    canvas.setLineWidth(0.4)
-    canvas.setStrokeColor(BORDER)
-    canvas.line(MARGIN, 1.5*cm, PAGE_W - MARGIN, 1.5*cm)
-    canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(PEWTER)
-    canvas.drawString(MARGIN, 1.1*cm, "Confidential · Internal Use")
-    canvas.drawRightString(PAGE_W - MARGIN, 1.1*cm, f"Page {doc.page}")
+    canvas.setFillColor(C_BLACK)
+    canvas.rect(0, H - 6*cm, W, 6*cm, fill=1, stroke=0)
+    canvas.setFont("Helvetica-Bold", 38); canvas.setFillColor(C_WHITE)
+    canvas.drawString(MARGIN, H - 3.2*cm, "Excelsis 360")
+    canvas.setFont("Helvetica", 16)
+    canvas.drawString(MARGIN, H - 4.2*cm, "Data Analyst Agent")
+    canvas.setFont("Helvetica", 11); canvas.setFillColor(colors.HexColor("#aaaaaa"))
+    canvas.drawString(MARGIN, H - 5.0*cm, "Technical Documentation  ·  v1.1")
     canvas.restoreState()
 
-def first_page(canvas, doc):
+def _page(canvas, doc):
     canvas.saveState()
-    canvas.setFillColor(CARBON)
-    canvas.rect(0, PAGE_H - 5.5*cm, PAGE_W, 5.5*cm, fill=1, stroke=0)
-    canvas.setFillColor(SNOW)
-    canvas.setFont("Helvetica-Bold", 32)
-    canvas.drawCentredString(PAGE_W/2, PAGE_H - 2.8*cm, "Excelsis 360")
-    canvas.setFont("Helvetica", 14)
-    canvas.setFillColor(colors.HexColor("#aaaaaa"))
-    canvas.drawCentredString(PAGE_W/2, PAGE_H - 3.5*cm, "Data Analyst Agent")
-    canvas.setFont("Helvetica", 10)
-    canvas.drawCentredString(PAGE_W/2, PAGE_H - 4.3*cm, "Technical Documentation  ·  v1.0")
-    # Footer
-    canvas.setFillColor(PEWTER)
+    canvas.setFont("Helvetica-Bold", 9); canvas.setFillColor(C_BLACK)
+    canvas.drawString(MARGIN, H - 1.5*cm, "Excelsis 360 — Data Analyst Agent")
+    canvas.setFont("Helvetica", 9); canvas.setFillColor(C_GREY)
+    canvas.drawRightString(W - MARGIN, H - 1.5*cm, "Technical Documentation")
+    canvas.line(MARGIN, H - 1.7*cm, W - MARGIN, H - 1.7*cm)
     canvas.setFont("Helvetica", 8)
-    canvas.drawCentredString(PAGE_W/2, 1.2*cm, f"Page {doc.page}")
+    canvas.drawString(MARGIN, 1.2*cm, "Confidential · Internal Use")
+    canvas.drawRightString(W - MARGIN, 1.2*cm, f"Page {doc.page}")
+    canvas.line(MARGIN, 1.6*cm, W - MARGIN, 1.6*cm)
     canvas.restoreState()
 
-# ── Document content ──────────────────────────────────────────────────────────
+def _tmpl(canvas, doc):
+    (_cover if doc.page == 1 else _page)(canvas, doc)
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 def build():
-    out = "Excelsis 360 Analyst Agent.pdf"
     doc = SimpleDocTemplate(
-        out,
-        pagesize=A4,
+        "Excelsis 360 Analyst Agent.pdf", pagesize=A4,
         leftMargin=MARGIN, rightMargin=MARGIN,
-        topMargin=2.4*cm, bottomMargin=2.2*cm,
-        title="Excelsis 360 — Technical Documentation",
-        author="Excelsis 360 Engineering",
+        topMargin=3.2*cm, bottomMargin=2.5*cm,
     )
+    s = []   # story
 
-    story = []
+    # COVER
+    s += [Spacer(1,7*cm), p("Technical Documentation", CVSB), sp(10),
+          p("An AI-powered data analyst for the Excelsis360 platform,<br/>"
+            "built on locally-hosted LLMs, SQL Server, and a React web interface.", CVSB),
+          sp(20), hr(), p("Version 1.1  ·  June 2026", CVMT), PageBreak()]
 
-    # ── Cover ────────────────────────────────────────────────────────────────
-    story += [
-        sp(180),
-        Paragraph("Technical Documentation", Subtitle),
-        sp(6),
-        Paragraph("An AI-powered data analyst for the Excelsis360 platform,<br/>built on locally-hosted LLMs, SQL Server, and a React web interface.", Subtitle),
-        sp(20),
-        hr(),
-        sp(6),
-        Paragraph("Version 1.0  ·  May 2026", Note),
-        PageBreak(),
+    # TOC
+    s.append(h1("Table of Contents"))
+    s.append(tbl([
+        th("#","Chapter","Summary"),
+        td("1","Project Overview","What Excelsis 360 is, its purpose, and its key capabilities"),
+        td("2","Use Cases","Scenarios the system is designed to support"),
+        td("3","System Architecture","High-level design and data flow"),
+        td("4","Technology Stack","Every library and tool used and why"),
+        td("5","Data Backend — SQLDataStore","SQL Server integration, caching, and SQL safety"),
+        td("6","AI Agent — ExcelsisAgent","LangGraph ReAct loop, SqliteSaver checkpointer, and streaming"),
+        td("7","Agent Tools","All 13 tools exposed to the LLM"),
+        td("8","REST API","FastAPI endpoints, auth, rate limiting, and SSE"),
+        td("9","Authentication & User Management","JWT, bcrypt, and users.json"),
+        td("10","React Web Interface","Pages, components, and the design system"),
+        td("11","MCP Server","Claude Code integration via FastMCP"),
+        td("12","Jupyter Notebook","Interactive analysis environment"),
+        td("13","Configuration Reference","All environment variables"),
+        td("14","Security Model","What is enforced and what is not"),
+        td("15","Running the Stack","Installation, setup, and operation"),
+        td("16","Test Suite","Unit and integration tests"),
+        td("17","Extending the System","How to add databases, tools, and pages"),
+    ], [1.2*cm, 5.5*cm, cw-6.7*cm]))
+    s.append(PageBreak())
+
+    # CH 1 ────────────────────────────────────────────────────────────────────
+    s.append(h1("1. Project Overview"))
+    s += [p("The Excelsis 360 Data Analyst Agent is a full-stack AI analyst. It extends existing data "
+            "infrastructure with a reasoning AI layer — combining a locally-hosted LLM (qwen2.5:14b via Ollama), "
+            "direct SQL Server access, a ChromaDB RAG layer, and a dedicated web interface — to give staff a "
+            "conversational way to interrogate data without writing reports or navigating dashboards."),
+          h2("1.1 Core Principles"),
+          b("<b>Privacy-first.</b> All inference runs locally via Ollama — no data ever leaves the network."),
+          b("<b>Read-only data access.</b> AST-level SQL parsing rejects DML/DDL; database allowlist enforced."),
+          b("<b>Transparent reasoning.</b> Streaming interface shows each tool call as it happens."),
+          b("<b>Zero speculative statistics.</b> Agent never fabricates data."),
+          b("<b>Minimal footprint.</b> No cloud dependencies at inference time."),
+          h2("1.2 Key Features")]
+    s.append(tbl([
+        th("Feature","Description"),
+        td("Natural-language chat",   "Ask questions in plain English; agent reasons and streams answer token-by-token"),
+        td("ReAct reasoning loop",    "Model decides which tools to call, in what order, across multiple steps"),
+        td("At-risk detection",       "Automatic flagging of entities below a configurable metric threshold (default 75%)"),
+        td("Ad-hoc SQL",              "Agent can write and run T-SQL SELECT queries against any configured database"),
+        td("Live dashboard",          "5 interactive Recharts charts with Power BI-style cross-filtering and drill-down"),
+        td("Agent ↔ dashboard link",  "Asking the agent to show a chart updates the dashboard live via SSE"),
+        td("User management",         "Admin-controlled accounts with bcrypt-hashed passwords and 24h JWT tokens"),
+        td("RAG knowledge base",      "ChromaDB + BAAI/bge-small-en-v1.5 (HuggingFace, auto-downloaded); "
+                                      "indexes SQL schema and policy documents"),
+        td("Persistent chat history", "Per-user conversation stored in SQLite via LangGraph SqliteSaver (CHAT_DB); "
+                                      "survives restarts, shared across all Uvicorn workers"),
+        td("Rate limiting",           "10 req/min/user via SlowAPI; Redis-backed (REDIS_URI) for multi-worker accuracy; "
+                                      "falls back to in-memory when REDIS_URI is unset"),
+        td("MCP server",              "FastMCP stdio server: ask_analyst (full ReAct loop) + 5 direct-data tools"),
+        td("Jupyter notebook",        "Full interactive analysis environment sharing the same src/ backend"),
+    ], [4.5*cm, cw-4.5*cm]))
+    s.append(PageBreak())
+
+    # CH 2 ────────────────────────────────────────────────────────────────────
+    s.append(h1("2. Use Cases"))
+    s.append(p("Excelsis 360 is built around concrete workflows. Each use case maps to one or more agent tools."))
+    for title, body in [
+        ("2.1 Daily Check",
+         "A staff member asks: \"Which groups had the lowest metric this week?\" The agent calls "
+         "<font face='Courier'>query_data(period='last_7_days')</font> and streams a ranked table."),
+        ("2.2 At-Risk Identification",
+         "Ask: \"List all entities below 70%.\" The agent calls "
+         "<font face='Courier'>get_threshold_alerts(threshold=70.0)</font> and returns a table with "
+         "entity IDs, labels, groups, and metric rates."),
+        ("2.3 Trend Analysis",
+         "Ask: \"How does this month compare to the previous month?\" The agent calls "
+         "<font face='Courier'>compare_periods</font> and returns a side-by-side table with a delta column."),
+        ("2.4 Segment Comparison",
+         "Ask: \"Compare segment A and B.\" The agent calls <font face='Courier'>compare_segments</font> "
+         "and presents both segments side by side."),
+        ("2.5 Ad-hoc Reporting",
+         "The agent calls <font face='Courier'>query_data(group_by='day_of_week')</font> or writes a "
+         "T-SQL query via <font face='Courier'>run_sql_query</font> for complex custom reports."),
+        ("2.6 Dashboard-Driven Exploration",
+         "Navigate to the Dashboard. Use FilterBar, click charts to cross-filter, double-click to drill down. "
+         "Use 'Ask Excelsis' to open the embedded chat panel — the agent updates dashboard filters live."),
+        ("2.7 Policy Knowledge",
+         "The agent calls <font face='Courier'>retrieve_policy</font>. The RAG layer returns top-matching "
+         "excerpts from docs/*.md and docs/*.pdf. The agent synthesises a grounded answer."),
+        ("2.8 Model Context Protocol (MCP)",
+         "Start: <font face='Courier'>python -m src.mcp_server</font>. Call "
+         "<font face='Courier'>ask_analyst</font> for full ReAct loop, or direct tools for raw results."),
+    ]:
+        s.append(h2(title)); s.append(p(body))
+    s.append(PageBreak())
+
+    # CH 3 ────────────────────────────────────────────────────────────────────
+    s.append(h1("3. System Architecture"))
+    s.append(h2("3.1 Request Flow"))
+    s.append(tbl([
+        th("Layer","Component","Technology","Role"),
+        td("React App",         "React 18 + Vite",   "Browser",           "Renders UI, manages auth token, opens SSE stream"),
+        td("Fetch / Axios",     "Browser Fetch API", "Fetch + Axios",     "POST /chat/stream → EventSource-style reader"),
+        td("FastAPI",           "Python / Uvicorn",  "FastAPI",           "JWT validation, rate limiting, request routing"),
+        td("ExcelsisAgent",     "LangGraph ReAct",   "langgraph",         "SqliteSaver checkpointer (CHAT_DB); streams LLM events"),
+        td("qwen2.5:14b",       "Ollama",            "langchain-ollama",  "Reasons about tool selection and response"),
+        td("13 tools",          "Python functions",  "langchain-core",    "SQL, stats, RAG, anomaly detection, trend analysis"),
+        td("SQLDataStore",      "SQLAlchemy Pool",   "pyodbc + sqlalchemy","Read-only T-SQL with TTL cache and _exec/_query boundary"),
+        td("SQL Server",        "ODBC Driver 18",    "pyodbc",            "Primary data table + optional extra databases"),
+    ], [3.0*cm, 3.0*cm, 3.2*cm, cw-9.2*cm]))
+
+    s.append(h2("3.2 Component Diagram"))
+    s.append(pre(
+        "Browser (React :5173)\n"
+        "  POST /chat/stream  (Bearer JWT)\n"
+        "  GET  /data/*\n"
+        "  ▼\n"
+        "FastAPI (:8000)\n"
+        "  /auth/*        JWT sign/verify, user CRUD\n"
+        "  /chat/stream   SSE → ExcelsisAgent.astream_events()\n"
+        "  /data/*        Direct SQLDataStore queries (no LLM)\n\n"
+        "ExcelsisAgent  (LangGraph ReAct)\n"
+        "  ChatOllama    → qwen2.5:14b @ OLLAMA_BASE_URL\n"
+        "  SqliteSaver   → CHAT_DB  (per-user history, thread_id=user_id)\n"
+        "  13 tools\n\n"
+        "SQLDataStore (read-only)\n"
+        "  _exec()  ← trusted internal executor  (no parse guard)\n"
+        "  _query() ← _assert_select_only() guard (LLM-provided SQL only)\n"
+        "  QueuePool → SQL Server\n\n"
+        "ExcelsisRAGStore (ChromaDB)\n"
+        "  excelsis_schema ← INFORMATION_SCHEMA (indexed via _exec)\n"
+        "  excelsis_policy ← docs/*.pdf + docs/*.md\n\n"
+        "Rate Limiter (slowapi)\n"
+        "  REDIS_URI set   → shared counters across workers\n"
+        "  REDIS_URI empty → per-process in-memory counters"
+    ))
+
+    s.append(h2("3.3 Streaming Architecture"))
+    s.append(tbl([
+        th("SSE Event","Frontend Action"),
+        tdc('{"type": "token", "content": "…"}',      "LLM token — appended to current message bubble"),
+        tdc('{"type": "tool_start", "tool": "…"}',    "Tool call started — spinner badge shown"),
+        tdc('{"type": "tool_end", "tool": "…"}',      "Tool call returned — spinner removed"),
+        tdc('{"type": "tool_data", "tool": "…", …}',  "Tool returned table — rendered as interactive data grid"),
+        tdc('{"type": "dashboard_filter", …}',         "update_dashboard_view called — dashboard state updates live"),
+        tdc('{"type": "error", "message": "…"}',      "Timeout or model error — displayed to user"),
+        tdc('{"type": "done"}',                        "Stream complete — input field unlocked"),
+    ], [6.5*cm, cw-6.5*cm]))
+    s.append(PageBreak())
+
+    # CH 4 ────────────────────────────────────────────────────────────────────
+    s.append(h1("4. Technology Stack"))
+    s.append(tbl([
+        th("Library","Package","Layer","Why chosen"),
+        td("qwen2.5:14b",       "Ollama",                    "LLM",               "Strong tool-calling; fits on consumer GPU or Apple Silicon"),
+        td("LangGraph",         "langgraph",                 "Agent framework",    "ReAct loop with checkpointer, tool routing, async event streaming"),
+        td("SqliteSaver",       "langgraph-checkpoint-sqlite","Conversation state","Per-user persistent history via thread_id; worker-safe SQLite"),
+        td("langchain-ollama",  "langchain-ollama",          "LLM bridge",         "ChatOllama wraps Ollama's HTTP API"),
+        td("FastAPI",           "fastapi",                   "Web framework",      "Async, schema-validated, auto-docs, SSE"),
+        td("pyodbc",            "pyodbc",                    "SQL driver",         "ODBC 18 for SQL Server; Windows Auth + SQL Auth"),
+        td("SQLAlchemy",        "sqlalchemy",                "Connection pool",    "QueuePool per database; pool_pre_ping; contextlib.closing"),
+        td("sqlglot",           "sqlglot",                   "SQL parser",         "AST SELECT-only enforcement via _assert_select_only()"),
+        td("pandas",            "pandas",                    "Data wrangling",     "DataFrames for all intermediate computation"),
+        td("python-jose",       "python-jose",               "JWT",                "HS256 signing/verification; 24-hour TTL"),
+        td("bcrypt",            "bcrypt",                    "Password hashing",   "Per-password salt; stored in users.json"),
+        td("SlowAPI",           "slowapi",                   "Rate limiting",      "10 req/min/user; Redis-backed when REDIS_URI is set"),
+        td("redis",             "redis",                     "Cache backend",      "Optional; shared rate-limit counters across workers"),
+        td("ChromaDB",          "chromadb",                  "Vector store",       "Persistent local vector DB; schema + policy collections"),
+        td("HuggingFace Embed", "langchain-huggingface",     "Embeddings",         "BAAI/bge-small-en-v1.5 — auto-downloaded; no Ollama pull"),
+        td("FastMCP",           "mcp",                       "MCP server",         "stdio FastMCP; 6 tools for model-direct data access"),
+        td("React 18",          "react",                     "Frontend",           "Hooks-based SPA; Vite build and HMR"),
+        td("Tailwind CSS v4",   "tailwindcss",               "Styling",            "Utility-first; custom design tokens"),
+        td("Recharts",          "recharts",                  "Charts",             "Responsive SVG: bar, line, donut, area"),
+        td("Axios",             "axios",                     "HTTP client",        "Auto-attaches JWT; 401 → redirect to login"),
+        td("React Router v6",   "react-router-dom",          "Client routing",     "SPA navigation; ProtectedRoute enforces auth"),
+    ], [3.2*cm, 3.8*cm, 2.8*cm, cw-9.8*cm]))
+    s.append(PageBreak())
+
+    # CH 5 ────────────────────────────────────────────────────────────────────
+    s.append(h1("5. Data Backend — SQLDataStore"))
+    s += [p("SQLDataStore is the single source of truth for all Excelsis360 data. It is a read-only wrapper "
+            "around SQL Server in <font face='Courier'>src/sql_store.py</font>."),
+          h2("5.1 Database Schema"),
+          p("All column names are configurable via environment variables:")]
+    s.append(tbl([
+        th("Env Var","Default","Purpose"),
+        td("PRIMARY_TABLE",     "attendance",  "Main table the agent queries"),
+        td("METRIC_COLUMN",     "status",      "Column holding the measured metric"),
+        td("POSITIVE_VALUE",    "active",      "Value counted as a positive outcome"),
+        td("DATE_COLUMN",       "date",        "Date column for time-based filtering"),
+        td("ENTITY_COLUMN",     "entity_id",   "Primary entity key"),
+        td("ENTITY_NAME_COLUMN","entity_name", "Human-readable entity label"),
+        td("GROUP_COLUMNS",     "(empty)",     "Comma-separated grouping dimensions"),
+    ], [4.5*cm, 3.0*cm, cw-7.5*cm]))
+
+    s += [h2("5.2 SQL Safety — _exec vs _query"),
+          p("Two execution methods with a clear security boundary:"),
+          b("<b>_exec(sql, params, database)</b> — trusted internal executor used by all internal methods "
+            "(<font face='Courier'>summary</font>, <font face='Courier'>compute_stats</font>, "
+            "<font face='Courier'>get_threshold_alerts</font>, etc.). No parse-time guard — avoids overhead "
+            "on hardcoded trusted SQL. Uses <font face='Courier'>contextlib.closing(engine.raw_connection())</font> "
+            "for safe pool lifecycle management."),
+          b("<b>_query(sql, params, database)</b> — security wrapper. Calls "
+            "<font face='Courier'>_assert_select_only(sql)</font> first (sqlglot AST guard), then delegates to "
+            "<font face='Courier'>_exec</font>. Used <b>exclusively</b> by the "
+            "<font face='Courier'>run_sql_query</font> tool for LLM-provided SQL."),
+          p("<font face='Courier'>_assert_select_only</font> rejects: INSERT, UPDATE, DELETE, DROP, CREATE, "
+            "ALTER, TRUNCATE, MERGE, Command (EXEC/xp_cmdshell), multiple statements, and queries against "
+            "databases not in SQL_DATABASES."),
+          p("The RAG ingestor queries <font face='Courier'>INFORMATION_SCHEMA.COLUMNS</font> via "
+            "<font face='Courier'>_exec</font> directly — bypassing the guard that would otherwise block "
+            "system schema access."),
+          h3("SQL Injection Prevention"),
+          b("All user-supplied values are parameterised via pyodbc — never string-interpolated."),
+          b("Group-by column expressions come from a hardcoded allow-list dict (_group_expr)."),
+          b("sqlglot AST check catches multi-statement attacks even if parameterisation were bypassed."),
+          h2("5.3 TTL Cache"),
+          p("In-process _TTLCache with 5-minute expiry. All query methods check before hitting SQL Server. "
+            "Cache key encodes all parameters so different filter combinations are cached independently."),
+          h2("5.4 Public Methods")]
+    s.append(tbl([
+        th("Method","Description"),
+        td("summary()",                                     "Returns dict: total_records, entity_count, date_range, metric_rate, below_threshold_count, dimensions"),
+        td("compute_stats(group_by, period, segments, ...)", "DataFrame aggregated by dimension and period; used by query_data, compare_periods, and /data/stats"),
+        td("get_threshold_alerts(threshold, segments, ...)", "DataFrame of entities below threshold, ordered by metric_rate ascending"),
+        td("entity_weekly_rates(entity_ids, weeks)",         "Dict mapping entity_id → weekly metric rate list; used for sparkline charts"),
+        td("analyze_weekly_trend(...)",                      "Returns direction (improving/declining/stable), slope_per_week, and weekly breakdown"),
+        td("compute_statistical_summary(group_by, ...)",     "describe() stats of metric_rate across groups"),
+        td("detect_anomalies(group_by, sigma, ...)",         "Groups deviating more than sigma std deviations from the mean with z-scores"),
+        td("get_top_n(group_by, n, ascending, ...)",         "Top or bottom N groups ranked by metric_rate"),
+    ], [5.5*cm, cw-5.5*cm]))
+
+    s += [h2("5.5 Connection Management"),
+          p("SQLAlchemy QueuePool (one engine per database, created at startup). Pool size = SQL_POOL_SIZE "
+            "(default 5). Each query uses <font face='Courier'>contextlib.closing(engine.raw_connection())</font> "
+            "to borrow from the pool and return automatically. <font face='Courier'>store.close()</font> "
+            "disposes all engines on FastAPI lifespan shutdown.")]
+    s.append(PageBreak())
+
+    # CH 6 ────────────────────────────────────────────────────────────────────
+    s.append(h1("6. AI Agent — ExcelsisAgent"))
+    s += [p("ExcelsisAgent wraps a LangGraph ReAct agent powered by qwen2.5:14b via Ollama."),
+          h2("6.1 The ReAct Loop"),
+          p("ReAct interleaves Reasoning (what to do) and Acting (calling a tool). LangGraph alternates "
+            "llm ↔ tools nodes until the model emits a final AIMessage with no further tool calls."),
+          pre(
+              "User message\n"
+              "  ▼\n"
+              "LLM node  (qwen2.5:14b)\n"
+              "  YES → Tools node → result → LLM node (decides again)\n"
+              "  NO  → Final answer (streamed token-by-token)"
+          ),
+          h2("6.2 System Prompt"),
+          p("Fixed system prompt defines persona, tool usage rules, and analytical approach:"),
+          b("Never fabricate statistics — say so if data is unavailable"),
+          b("Call tools immediately — never narrate a tool call before making it"),
+          b("T-SQL syntax only; SELECT-only; use TOP, DATEPART, FORMAT, CONVERT, ISNULL"),
+          b("Call update_dashboard_view when user asks to see a chart or visual"),
+          b("Answer greetings and general questions directly without calling tools"),
+          h2("6.3 Conversation History — SqliteSaver"),
+          p("Conversation history is persisted using LangGraph's <b>SqliteSaver</b> checkpointer, stored "
+            "in <font face='Courier'>CHAT_DB</font> (default <font face='Courier'>./chat.db</font>). "
+            "Each user's thread is keyed by <font face='Courier'>thread_id=user.user_id</font> in the graph "
+            "config. The checkpointer loads and saves message state automatically on every call — "
+            "no manual history dict, no eviction loop, no per-message append code. "
+            "History survives server restarts and is shared across all Uvicorn workers."),
+          h2("6.4 Timeout Handling"),
+          p("Both <font face='Courier'>ask()</font> (sync, daemon thread + queue.Queue) and "
+            "<font face='Courier'>astream_events()</font> (async, asyncio.timeout) enforce a 240-second "
+            "timeout. The frontend SSE timeout is 270 s to match this plus a 30 s network buffer."),
+          h2("6.5 LLM Configuration")]
+    s.append(tbl([
+        th("Parameter","Value / Description"),
+        td("model",      "qwen2.5:14b (overridden by MODEL env var)"),
+        td("base_url",   "http://localhost:11434 (overridden by OLLAMA_BASE_URL)"),
+        td("temperature","0.1 — low for consistent, factual responses"),
+        td("num_ctx",    "8192 tokens context window"),
+        td("keep_alive", "10 minutes — model stays loaded in VRAM between requests"),
+    ], [3.5*cm, cw-3.5*cm]))
+    s.append(PageBreak())
+
+    # CH 7 ────────────────────────────────────────────────────────────────────
+    s.append(h1("7. Agent Tools"))
+    s.append(p("13 tools in <font face='Courier'>src/tools.py</font>, each decorated with @tool from LangChain. "
+               "Tools returning tabular data use response_format=\"content_and_artifact\" for UI table rendering."))
+    s.append(tbl([
+        th("Tool","Parameters","Description"),
+        [p("<font face='Courier'>query_data</font>",TD),
+         p("<font face='Courier'>group_by, period</font>",BSML),
+         p("Metric stats grouped by dimension and period. Calls store.compute_stats().", BSML)],
+        [p("<font face='Courier'>get_threshold_alerts</font>",TD),
+         p("<font face='Courier'>threshold=75.0</font>",BSML),
+         p("Entities below threshold ordered by metric_rate ascending.", BSML)],
+        [p("<font face='Courier'>get_summary</font>",TD),
+         p("(none)",BSML),
+         p("High-level overview: total_records, entity_count, date_range, metric_rate, dimensions.", BSML)],
+        [p("<font face='Courier'>update_dashboard_view</font>",TD),
+         p("<font face='Courier'>segments, period, view</font>",BSML),
+         p("Emits dashboard_filter SSE event to update React state without page reload.", BSML)],
+        [p("<font face='Courier'>run_sql_query</font>",TD),
+         p("<font face='Courier'>sql, database=\"\"</font>",BSML),
+         p("Ad-hoc T-SQL SELECT via _query() guard. Auto-adds TOP 200. Returns up to 200 rows.", BSML)],
+        [p("<font face='Courier'>compare_periods</font>",TD),
+         p("<font face='Courier'>period_a, period_b</font>",BSML),
+         p("Side-by-side metric rate table with delta column for two time periods.", BSML)],
+        [p("<font face='Courier'>compare_segments</font>",TD),
+         p("<font face='Courier'>segment_a, segment_b</font>",BSML),
+         p("Metric statistics for two segment values side by side.", BSML)],
+        [p("<font face='Courier'>retrieve_schema</font>",TD),
+         p("<font face='Courier'>query</font>",BSML),
+         p("Vector search of excelsis_schema ChromaDB collection (top-6 chunks). Use before SQL.", BSML)],
+        [p("<font face='Courier'>retrieve_policy</font>",TD),
+         p("<font face='Courier'>query</font>",BSML),
+         p("Vector search of excelsis_policy ChromaDB collection (top-4 chunks).", BSML)],
+        [p("<font face='Courier'>statistical_summary</font>",TD),
+         p("<font face='Courier'>group_by</font>",BSML),
+         p("Distribution stats (mean, std, min, percentiles, max) of metric_rate across groups.", BSML)],
+        [p("<font face='Courier'>detect_anomalies</font>",TD),
+         p("<font face='Courier'>group_by, sigma=2.0</font>",BSML),
+         p("Groups deviating more than sigma std deviations from the mean, with z-scores.", BSML)],
+        [p("<font face='Courier'>get_top_n</font>",TD),
+         p("<font face='Courier'>group_by, n=10, ascending</font>",BSML),
+         p("Top or bottom N groups ranked by metric_rate.", BSML)],
+        [p("<font face='Courier'>analyze_trend</font>",TD),
+         p("(none)",BSML),
+         p("Week-over-week trend: direction (improving/declining/stable), slope, weekly breakdown.", BSML)],
+    ], [3.8*cm, 4.2*cm, cw-8.0*cm]))
+    s.append(PageBreak())
+
+    # CH 8 ────────────────────────────────────────────────────────────────────
+    s.append(h1("8. REST API"))
+    s += [p("FastAPI backend at http://localhost:8000. Interactive docs at http://localhost:8000/docs. "
+            "All endpoints except /auth/login and /health require a valid Bearer JWT."),
+          h2("8.1 Endpoints")]
+    s.append(tbl([
+        th("Method","Path","Auth","Description"),
+        td("POST",   "/auth/login",            "None",    "Username + password → JWT (24h TTL)"),
+        td("GET",    "/auth/me",               "Any",     "Current user's username"),
+        td("GET",    "/auth/users",            "Admin",   "List all registered usernames"),
+        td("POST",   "/auth/users",            "Admin",   "Create a new user account"),
+        td("DELETE", "/auth/users/{username}", "Admin",   "Delete a user (cannot delete 'admin')"),
+        td("POST",   "/chat/stream",           "Any",     "SSE streaming chat → ExcelsisAgent.astream_events()"),
+        td("GET",    "/data/summary",          "Any",     "Data overview"),
+        td("GET",    "/data/alerts",           "Any",     "Entities below metric threshold"),
+        td("GET",    "/data/stats",            "Any",     "Aggregated stats by group/period"),
+        td("GET",    "/data/trends",           "Any",     "Current + prior 30-day weekly stats"),
+        td("GET",    "/data/sparklines",       "Any",     "Weekly rates for entity IDs (ids= CSV)"),
+        td("GET",    "/health",                "None",    '{"status": "ok", "rag_ready": bool}'),
+    ], [1.5*cm, 4.8*cm, 1.8*cm, cw-8.1*cm]))
+    s += [h2("8.2 Rate Limiting"),
+          p("POST /chat/stream is limited to 10 req/min per user (authenticated) or IP (unauthenticated). "
+            "Set <font face='Courier'>REDIS_URI</font> to share counters across Uvicorn workers. "
+            "Leave empty for per-process in-memory counters (single-worker). Returns HTTP 429 + Retry-After on exceed."),
+          h2("8.3 CORS"),
+          p("Configured via ALLOWED_ORIGINS (default: localhost:5173 + localhost:3000). "
+            "In production, serve the built React app via FastAPI StaticFiles — CORS becomes unnecessary."),
+          h2("8.4 Application Lifecycle"),
+          p("On startup: ensure_default_admin(); instantiate SQLDataStore, ExcelsisRAGStore, and "
+            "ExcelsisAgent (with SqliteSaver checkpointer); start background RAG ingestion thread; "
+            "validate Ollama + SQL Server connectivity; refuse start if JWT_SECRET is the insecure default.")]
+    s.append(PageBreak())
+
+    # CH 9 ────────────────────────────────────────────────────────────────────
+    s.append(h1("9. Authentication & User Management"))
+    s += [h2("9.1 User Store"),
+          p("Users stored in <font face='Courier'>api/users.json</font> as username → bcrypt hash. "
+            "File writes use atomic write-then-rename to prevent corruption."),
+          pre('{\n  "admin":      { "hashed_password": "$2b$12$..." },\n'
+              '  "ms_johnson": { "hashed_password": "$2b$12$..." }\n}'),
+          h2("9.2 JWT Tokens"),
+          p("HS256 JWTs signed with JWT_SECRET. Claims: <b>sub</b> (username) and <b>exp</b> (24h). "
+            "decode_token() reconstructs UserContext on every authenticated request. No refresh flow."),
+          h2("9.3 UserContext"),
+          p("Minimal dataclass with user_id field. Used as thread_id for SqliteSaver history. "
+            "Supports per-user data filtering if added to store methods."),
+          h2("9.4 Admin Operations"),
+          p("Only admin can access /auth/users endpoints. Admin cannot be deleted. "
+            "No password reset flow — delete and recreate to reset.")]
+    s.append(PageBreak())
+
+    # CH 10 ───────────────────────────────────────────────────────────────────
+    s.append(h1("10. React Web Interface"))
+    s.append(p("React 18 SPA built with Vite + Tailwind CSS v4. Two-column layout (sidebar + main content)."))
+    s.append(h2("10.1 Pages"))
+    s.append(tbl([
+        th("Page","Access","Description"),
+        td("Login (/login)",         "Public",        "POSTs to /auth/login, stores JWT in localStorage"),
+        td("Chat (/chat)",           "Authenticated", "Streams agent responses token-by-token with tool-use badges"),
+        td("Dashboard (/dashboard)", "Authenticated", "KPI cards + 5 charts + at-risk table + drilldown. Embedded chat updates filters live"),
+        td("Users (/users)",         "Admin only",    "List, create, and delete user accounts"),
+    ], [3.5*cm, 2.5*cm, cw-6.0*cm]))
+    s.append(h2("10.2 Key Components"))
+    s.append(tbl([
+        th("Component","Description"),
+        td("Sidebar",              "Left navigation: Chat, Dashboard, Users (admin), logout"),
+        td("MessageBubble",        "Renders chat turn with markdown, tool badges, and interactive data tables"),
+        td("ChatPanel",            "Embedded chat on Dashboard; passes dashboard_filter events to parent"),
+        td("FilterBar",            "Group multi-select + period dropdown; triggers fresh data fetch on change"),
+        td("Breadcrumb",           "Overview → Group → Entity drill navigation"),
+        td("DrilldownPanel",       "Group or entity detail with sparkline trend charts"),
+        td("MetricByGroupChart",   "Horizontal bar; single-click cross-filters, double-click drills down"),
+        td("WeeklyTrendChart",     "Line chart; click a week to filter all dashboard data"),
+        td("MetricBreakdownChart", "Donut of positive/negative outcome proportions"),
+        td("WeekdayBarChart",      "Bar chart of metric rate by day of week"),
+        td("TrendComparisonChart", "Grouped bar: current vs prior 30-day periods"),
+        td("ProtectedRoute",       "HOC redirecting unauthenticated users to /login"),
+    ], [4.5*cm, cw-4.5*cm]))
+    s.append(h2("10.3 Design System"))
+    s.append(tbl([
+        th("Token","Hex","Usage"),
+        td("carbon",     "#0d0d0d","Primary text, headings, icons"),
+        td("snow",       "#ffffff","Page backgrounds, card surfaces"),
+        td("fog",        "#f9f9f9","Sidebar, secondary backgrounds"),
+        td("arctic-mist","#ececec","Borders, dividers, hover backgrounds"),
+        td("pewter",     "#5d5d5d","Secondary text, placeholders"),
+        td("link-blue",  "#007aff","Focus rings, interactive accents"),
+    ], [3.0*cm, 2.5*cm, cw-5.5*cm]))
+    s += [h2("10.4 SSE Client"),
+          p("Uses Fetch API + ReadableStream (not EventSource — which can't POST). "
+            "<font face='Courier'>streamChat()</font> in web/src/api/client.ts reads chunks, splits on "
+            "newlines, strips 'data: ' prefix. Timeout: 270 s (matches 240 s backend + 30 s buffer). "
+            "Auth header via shared <font face='Courier'>getAuthHeader()</font> helper — single localStorage read.")]
+    s.append(PageBreak())
+
+    # CH 11 ───────────────────────────────────────────────────────────────────
+    s.append(h1("11. MCP Server"))
+    s += [p("stdio-based FastMCP process. Initialises SQLDataStore, ExcelsisRAGStore, and ExcelsisAgent "
+            "(with SqliteSaver checkpointer). Identity fixed via MCP_USER_ID."),
+          h2("11.1 Exposed Tools")]
+    s.append(tbl([
+        th("Tool","Description"),
+        td("ask_analyst(query)",               "Full ReAct loop: agent selects tools, reasons, and returns a complete answer"),
+        td("data_summary()",                   "JSON overview: record count, entity count, date range, overall metric rate"),
+        td("threshold_alerts(threshold)",      "Entities below threshold as a formatted table"),
+        td("group_statistics(group_by,period)","Metric stats grouped by a dimension and period"),
+        td("schema_lookup(query)",             "Vector search of table/column metadata — use before writing SQL"),
+        td("knowledge_lookup(query)",          "Vector search of policy and rule documents"),
+    ], [5.5*cm, cw-5.5*cm]))
+    s.append(h2("11.2 Starting the MCP Server"))
+    s.append(pre("MCP_USER_ID=ms_johnson python -m src.mcp_server\n# Or with default user:\npython -m src.mcp_server"))
+    s.append(PageBreak())
+
+    # CH 12 ───────────────────────────────────────────────────────────────────
+    s.append(h1("12. Jupyter Notebook"))
+    s += [p("Excelsis.ipynb shares the same src/ Python backend as the web application."),
+          h2("12.1 Notebook Cells")]
+    s.append(tbl([
+        th("Cell","Name","Description"),
+        td("1","Setup & imports",    "Load env vars, import src modules"),
+        td("2","Connectivity check", "Verify Ollama is running; fail fast if not"),
+        td("3","Connect to SQL",     "Instantiate SQLDataStore and print summary"),
+        td("4","Data summary",       "Call store.summary() and display as dict"),
+        td("5","Set identity",       "CURRENT_USER = UserContext(user_id='...')"),
+        td("6","Agent setup",        "Instantiate ExcelsisAgent(store=store, rag_store=rag_store)"),
+        td("7","Chat interface",     "agent.ask(query, user=CURRENT_USER)"),
+        td("8","Direct tool calls",  "Call individual tools bypassing the LLM"),
+        td("9","Visualisations",     "Plotly/matplotlib charts from store data"),
+    ], [1.2*cm, 3.8*cm, cw-5.0*cm]))
+    s.append(PageBreak())
+
+    # CH 13 ───────────────────────────────────────────────────────────────────
+    s.append(h1("13. Configuration Reference"))
+    s.append(tbl([
+        th("Variable","Required","Default","Description"),
+        td("SQL_SERVER",          "Yes",       "—",                           "SQL Server hostname, IP, or named instance"),
+        td("SQL_DATABASES",       "Yes",       "—",                           "Comma-separated list of allowed databases"),
+        td("SQL_USERNAME",        "sql auth",  "—",                           "SQL Server login username"),
+        td("SQL_PASSWORD",        "sql auth",  "—",                           "SQL Server login password"),
+        td("SQL_PRIMARY_DB",      "No",        "first in SQL_DATABASES",      "Default database for queries"),
+        td("SQL_AUTH_METHOD",     "No",        "sql",                         "sql | windows | azure_ad"),
+        td("SQL_DRIVER",          "No",        "{ODBC Driver 18 for SQL Server}", "ODBC driver string"),
+        td("SQL_POOL_SIZE",       "No",        "5",                           "SQLAlchemy QueuePool base connection count per database"),
+        td("SQL_QUERY_TIMEOUT",   "No",        "30",                          "Per-query connection timeout in seconds"),
+        td("JWT_SECRET",          "Yes (prod)","change-me-in-production",     "JWT signing key — MUST be changed before production"),
+        td("ADMIN_PASSWORD",      "No",        "admin123",                    "Initial admin password (first startup only)"),
+        td("CHAT_DB",             "No",        "./chat.db",                   "SQLite file for LangGraph SqliteSaver conversation history"),
+        td("REDIS_URI",           "No",        "(empty)",                     "Redis URI for shared rate-limit counters; in-memory fallback when unset"),
+        td("MODEL",               "No",        "qwen2.5:14b",                 "Ollama model for the ReAct agent"),
+        td("OLLAMA_BASE_URL",     "No",        "http://localhost:11434",      "Ollama server base URL"),
+        td("OLLAMA_API_KEY",      "No",        "(empty)",                     "Bearer token for authenticated Ollama instances"),
+        td("AT_RISK_THRESHOLD",   "No",        "75.0",                        "Default metric % threshold for flagging"),
+        td("MCP_USER_ID",         "No",        "mcp_user",                    "Username used by the MCP server process"),
+        td("PRIMARY_TABLE",       "No",        "attendance",                  "Primary SQL table"),
+        td("METRIC_COLUMN",       "No",        "status",                      "Column holding the measured metric"),
+        td("POSITIVE_VALUE",      "No",        "active",                      "Value counted as a positive outcome"),
+        td("DATE_COLUMN",         "No",        "date",                        "Date column for time-based filtering"),
+        td("ENTITY_COLUMN",       "No",        "entity_id",                   "Primary entity key column"),
+        td("ENTITY_NAME_COLUMN",  "No",        "entity_name",                 "Human-readable entity name column"),
+        td("GROUP_COLUMNS",       "No",        "(empty)",                     "Comma-separated grouping dimension columns"),
+        td("CHROMA_PATH",         "No",        ".chroma",                     "Persistent ChromaDB directory path"),
+        td("EMBED_MODEL",         "No",        "BAAI/bge-small-en-v1.5",     "HuggingFace embedding model — auto-downloaded on first run"),
+        td("DOCS_PATH",           "No",        "docs",                        "Directory scanned for policy PDFs and Markdown files"),
+        td("RAG_CACHE_TTL",       "No",        "3600",                        "TTL in seconds for RAG query result cache"),
+        td("MAX_MESSAGE_LEN",     "No",        "2000",                        "Maximum characters per chat message"),
+        td("MAX_PROMPT_TOKENS",   "No",        "2048",                        "Maximum estimated tokens before rejection"),
+        td("ALLOWED_ORIGINS",     "No",        "http://localhost:5173,…",     "Comma-separated CORS allowed origins"),
+        td("MLFLOW_TRACKING_URI", "No",        "(empty)",                     "MLflow server URI; empty = tracking disabled"),
+    ], [3.8*cm, 2.0*cm, 3.5*cm, cw-9.3*cm]))
+    s.append(PageBreak())
+
+    # CH 14 ───────────────────────────────────────────────────────────────────
+    s.append(h1("14. Security Model"))
+    s.append(h2("14.1 What Is Enforced"))
+    s += [
+        b("<b>SQL read-only enforcement</b> — sqlglot AST rejects non-SELECT statements; applied exclusively "
+          "to LLM-provided SQL via _query()."),
+        b("<b>Internal/external boundary</b> — hardcoded internal SQL uses _exec() (no overhead); "
+          "LLM-provided SQL must pass _query() with the sqlglot guard."),
+        b("<b>Database allowlist</b> — only SQL_DATABASES databases can be queried."),
+        b("<b>SQL injection prevention</b> — user-supplied values parameterised; group-by from hardcoded allow-list."),
+        b("<b>JWT authentication</b> — all endpoints except /auth/login and /health require a valid JWT."),
+        b("<b>Password hashing</b> — bcrypt with per-password salts."),
+        b("<b>Rate limiting</b> — 10 req/min/user; Redis-backed across workers when REDIS_URI is set."),
+        b("<b>Local inference</b> — all LLM inference on localhost via Ollama; data never leaves the network."),
+        b("<b>Timeout enforcement</b> — 240 s backend + 270 s frontend SSE timeout."),
+        b("<b>Startup secret check</b> — server refuses to start if JWT_SECRET is still the default."),
     ]
-
-    # ── TOC ──────────────────────────────────────────────────────────────────
-    story += chapter("Table of Contents")
-    toc_items = [
-        ("1", "Project Overview", "What Excelsis 360 is, its purpose, and its key capabilities"),
-        ("2", "Use Cases", "Scenarios the system is designed to support"),
-        ("3", "System Architecture", "High-level design and data flow"),
-        ("4", "Technology Stack", "Every library and tool used and why"),
-        ("5", "Data Backend — SQLDataStore", "SQL Server integration, caching, and SQL safety"),
-        ("6", "AI Agent — ExcelsisAgent", "LangGraph ReAct loop, tools, and streaming"),
-        ("7", "Agent Tools", "All 13 tools exposed to the LLM"),
-        ("8", "REST API", "FastAPI endpoints, auth, rate limiting, and SSE"),
-        ("9", "Authentication & User Management", "JWT, bcrypt, and users.json"),
-        ("10", "React Web Interface", "Pages, components, and the design system"),
-        ("11", "MCP Server", "Claude Code integration via FastMCP"),
-        ("12", "Jupyter Notebook", "Interactive analysis environment"),
-        ("13", "Configuration Reference", "All environment variables"),
-        ("14", "Security Model", "What is enforced and what is not"),
-        ("15", "Running the Stack", "Installation, setup, and operation"),
-        ("16", "Test Suite", "Unit and integration tests"),
-        ("17", "Extending the System", "How to add databases, tools, and pages"),
-    ]
-    story.append(simple_table(
-        ["#", "Chapter", "Summary"],
-        toc_items,
-        col_widths=[1*cm, 5.5*cm, PAGE_W - MARGIN*2 - 6.5*cm]
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 1: Project Overview
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("1. Project Overview")
-
-    story.append(body(
-        "The Excelsis 360 Data Analyst Agent is a full-stack AI analyst built for the Excelsis 360 "
-        "platform. It extends the platform's existing data infrastructure with a reasoning AI layer — "
-        "combining a locally-hosted LLM (qwen2.5:14b via Ollama), direct access to SQL Server data, a "
-        "ChromaDB RAG layer for schema and policy retrieval, and a dedicated web interface — to give "
-        "staff a conversational way to interrogate data without writing reports or navigating dashboards."
-    ))
-    story.append(sp())
-    story.append(body(
-        "The Analyst Agent sits on top of the platform's SQL data and answers questions in plain English. "
-        "A user can ask \"which groups are at risk this month?\" and the agent reasons across the data, "
-        "selects the right tools, and streams back a specific, grounded answer. When schema or policy "
-        "questions arise, the agent retrieves accurate answers from a vector knowledge base rather than "
-        "relying on the model's training data. No hard-coded report logic; no SQL required."
-    ))
-    story.append(sp())
-
-    story += section("1.1  Core Principles")
-    story += bullet_list([
-        "<b>Privacy-first.</b> All inference runs locally via Ollama — no attendance data ever leaves the school network.",
-        "<b>Read-only data access.</b> The SQL layer enforces SELECT-only queries through both AST-level SQL parsing and allow-listed databases. The AI agent cannot modify, insert, or delete any records.",
-        "<b>Transparent reasoning.</b> The streaming interface shows each tool call as it happens, letting staff see exactly which data sources the agent consulted before producing an answer.",
-        "<b>Zero speculative statistics.</b> The system prompt instructs the model never to fabricate data — if the data is not in the store, the agent says so explicitly.",
-        "<b>Minimal footprint.</b> No cloud dependencies at inference time. The only external service is Ollama running on localhost.",
-    ])
-    story.append(sp())
-
-    story += section("1.2  Key Features")
-    features = [
-        ["Natural-language chat", "Ask questions in plain English; the agent reasons and streams the answer token-by-token"],
-        ["ReAct reasoning loop", "The model decides which tools to call, in what order, across multiple steps"],
-        ["At-risk detection", "Automatic flagging of students below a configurable attendance threshold (default 75%)"],
-        ["Ad-hoc SQL", "The agent can write and run T-SQL SELECT queries against any configured database"],
-        ["Live dashboard", "Interactive charts: class attendance, weekly trend, status donut, day-of-week bar, trend comparison"],
-        ["Agent ↔ dashboard link", "Asking the agent to show a chart updates the dashboard in real time (SSE event)"],
-        ["User management", "Admin-controlled user accounts with bcrypt-hashed passwords and JWT tokens"],
-        ["RAG knowledge base", "ChromaDB vector store (nomic-embed-text embeddings) indexes SQL schema metadata and policy documents; agent calls retrieve_schema and retrieve_policy for grounded answers"],
-        ["MCP server", "Gives a model direct access to Excelsis 360 data via FastMCP stdio: ask_analyst routes through the full ReAct loop; five direct-data tools bypass the agent"],
-        ["Jupyter notebook", "Full interactive analysis environment sharing the same Python backend"],
-        ["Rate limiting", "Chat endpoint limited to 10 requests per minute per IP via SlowAPI"],
-    ]
-    story.append(simple_table(
-        ["Feature", "Description"],
-        features,
-        col_widths=[5*cm, PAGE_W - MARGIN*2 - 5*cm]
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 2: Use Cases
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("2. Use Cases")
-
-    story.append(body(
-        "Excelsis 360 is built around several concrete workflows that school staff encounter daily. Each "
-        "use case maps to one or more agent tools and front-end views."
-    ))
-    story.append(sp())
-
-    use_cases = [
-        (
-            "2.1  Daily Attendance Check",
-            "A homeroom teacher wants a quick overview of which classes underperformed today or this week.",
-            [
-                "Open the Chat page and type: \"Which classes had the lowest attendance this week?\"",
-                "The agent calls query_attendance with period=last_7_days, group_by=class.",
-                "Results are streamed back as a ranked table of classes with attendance rates.",
-                "The agent flags any class below 75% as at-risk.",
-            ]
-        ),
-        (
-            "2.2  At-Risk Student Identification",
-            "A school counsellor needs to identify students who are chronically absent and may need intervention.",
-            [
-                "Ask: \"List all students below 70% attendance in class 10A.\"",
-                "The agent calls get_at_risk_students with threshold=70.0.",
-                "A table is returned with student IDs, names, class, total sessions, and attendance rate.",
-                "The Dashboard's at-risk panel also shows this data with sparkline trend charts per student.",
-            ]
-        ),
-        (
-            "2.3  Trend Analysis",
-            "A deputy principal wants to know if attendance has improved or declined over the past month compared to the prior month.",
-            [
-                "Ask: \"How does attendance this month compare to the previous month?\"",
-                "The agent calls compare_periods(period_a='last_30_days', period_b='prior_30_days').",
-                "A side-by-side table with a delta column is returned, highlighting classes that improved or declined.",
-                "The TrendComparisonChart on the Dashboard visualises this automatically.",
-            ]
-        ),
-        (
-            "2.4  Class Comparison",
-            "A head of year wants to benchmark two specific classes against each other.",
-            [
-                "Ask: \"Compare 10A and 10B attendance.\"",
-                "The agent calls compare_classes(class_a='10A', class_b='10B').",
-                "Both classes are presented side by side with present, absent, late counts and overall rate.",
-            ]
-        ),
-        (
-            "2.5  Ad-hoc Reporting",
-            "An administrator needs a custom report — for example, absences on Monday across all grades.",
-            [
-                "Ask: \"Which day of the week has the most absences?\"",
-                "The agent calls query_attendance with group_by=day_of_week.",
-                "For more complex needs, the agent writes a T-SQL query via run_sql_query.",
-                "Example: SELECT DATENAME(dw,date) AS day, COUNT(*) AS absences FROM attendance WHERE status='absent' GROUP BY DATENAME(dw,date) ORDER BY absences DESC",
-            ]
-        ),
-        (
-            "2.6  Dashboard-Driven Exploration",
-            "A staff member wants to explore data visually rather than through chat.",
-            [
-                "Navigate to the Dashboard page.",
-                "Use the FilterBar to select specific classes and time periods.",
-                "Click a bar in the Attendance by Class chart to highlight that class across all charts.",
-                "Double-click to drill down to student-level data for that class.",
-                "Click a student row to inspect their weekly trend sparkline.",
-                "Use 'Ask Excelsis' to open the embedded chat panel and ask follow-up questions — the agent can update the dashboard view directly.",
-            ]
-        ),
-        (
-            "2.7  Policy Knowledge",
-            "A user asks about thresholds, exemption rules, or intervention procedures documented in school policy.",
-            [
-                "The agent calls retrieve_policy with the user's question as the query.",
-                "The RAG layer searches the ChromaDB policy collection (indexed from docs/*.md and docs/*.pdf).",
-                "The top matching policy excerpts are returned and injected into the agent's context.",
-                "The agent synthesises a grounded answer citing the actual policy text rather than guessing from training data.",
-            ]
-        ),
-        (
-            "2.8  Model Context Protocol (MCP)",
-            "A model or developer wants to query Excelsis 360 data directly via the MCP server.",
-            [
-                "Start the MCP server: python -m src.mcp_server",
-                "The model can call ask_analyst to route a natural-language question through the full ReAct loop.",
-                "Or call direct-data tools: data_summary, threshold_alerts, group_statistics, schema_lookup, knowledge_lookup.",
-                "Direct tools return raw results the model can reason about without the agent layer.",
-            ]
-        ),
-    ]
-
-    for title, desc, steps in use_cases:
-        story += section(title)
-        story.append(body(desc))
-        story.append(sp(4))
-        story += bullet_list([f"Step {i+1}: {s}" for i, s in enumerate(steps)])
-        story.append(sp(6))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 3: System Architecture
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("3. System Architecture")
-
-    story += section("3.1  Request Flow")
-    story.append(body(
-        "Every user interaction follows the same path through the system. Understanding this flow "
-        "is key to understanding how all the components fit together."
-    ))
-    story.append(sp(6))
-
-    flow_data = [
-        ["Layer", "Component", "Technology", "Role"],
-        ["1. Browser", "React App", "React 18 + Vite", "Renders UI, manages auth token, opens SSE stream"],
-        ["2. HTTP/SSE", "Fetch / Axios", "Browser Fetch API", "POST /chat/stream → EventSource-style reader"],
-        ["3. API Gateway", "FastAPI", "Python / Uvicorn", "JWT validation, rate limiting, request routing"],
-        ["4. Agent", "ExcelsisAgent", "LangGraph ReAct", "Maintains conversation history, streams LLM events"],
-        ["5. LLM", "qwen2.5:14b", "Ollama / ChatOllama", "Reasons about which tools to call and in what order"],
-        ["6. Tools", "13 LangGraph tools", "Python functions", "SQL queries, stats, RAG retrieval, anomaly detection, trend analysis"],
-        ["7. Data Store", "SQLDataStore", "pyodbc / SQL Server", "Read-only T-SQL queries with TTL cache"],
-        ["8. Database", "SQL Server", "ODBC Driver 18", "Primary attendance table + optional extra databases"],
-    ]
-    story.append(simple_table(
-        ["Layer", "Component", "Technology", "Role"],
-        [r[1:] for r in flow_data[1:]],
-        col_widths=[3.5*cm, 3.5*cm, 3.5*cm, PAGE_W - MARGIN*2 - 10.5*cm]
-    ))
-    story.append(sp(8))
-
-    story += section("3.2  Component Diagram (textual)")
-    story.append(code_block(
-"""Browser (React :5173)
-  │
-  │  POST /chat/stream  (Bearer JWT)
-  │  GET  /data/summary, /data/alerts, /data/stats, /data/trends …
-  ▼
-FastAPI (:8000)
-  ├── /auth/*        JWT sign/verify, user CRUD
-  ├── /chat/stream   SSE — delegates to ExcelsisAgent.astream_events()
-  └── /data/*        Direct SQLDataStore queries (no LLM)
-
-ExcelsisAgent  (LangGraph ReAct)
-  ├── ChatOllama ─── qwen2.5:14b @ http://localhost:11434
-  ├── Conversation history (last 10 turns)
-  └── 13 tools ─────────────────────────────────────────────────────────┐
-                                                                        │
-SQLDataStore (read-only)                          Tools (SQL)    │
-  ├── _assert_select_only()  ← sqlglot AST guard         ◄─────────────┘
-  ├── _TTLCache (5-min TTL)                                             │
-  └── pyodbc ─── SQL Server                       Tools (RAG)    │
-        ├── primary_db  (configurable schema)             ◄────────────┘
-        └── extra_db_1, extra_db_2, …  (allowlisted)
-                                                                        │
-ExcelsisRAGStore (ChromaDB)                                            │
-  ├── excelsis_schema  ← SQL INFORMATION_SCHEMA (auto-indexed)         │
-  └── excelsis_policy  ← docs/*.pdf + docs/*.md (background ingestor)  │
-
-MCP Server (stdio)
-  └── FastMCP ─── ExcelsisAgent + SQLDataStore + ExcelsisRAGStore
-        ├── ask_analyst()        ← full ReAct loop
-        ├── data_summary()
-        ├── threshold_alerts()
-        ├── group_statistics()
-        ├── schema_lookup()
-        └── knowledge_lookup()
-"""
-    ))
-
-    story += section("3.3  Streaming Architecture")
-    story.append(body(
-        "The chat endpoint uses Server-Sent Events (SSE) to stream the agent's output to the browser "
-        "incrementally. The event types emitted are:"
-    ))
-    events = [
-        ["{\"type\": \"token\", \"content\": \"…\"}", "One LLM output token — appended to the current message bubble"],
-        ["{\"type\": \"tool_start\", \"tool\": \"…\"}", "An agent tool call has started — UI shows a spinner badge"],
-        ["{\"type\": \"tool_end\", \"tool\": \"…\"}", "The tool call returned — spinner removed"],
-        ["{\"type\": \"dashboard_filter\", …}", "Agent called update_dashboard_view — Dashboard state updates live"],
-        ["{\"type\": \"error\", \"message\": \"…\"}", "Timeout or model error — displayed as an error message"],
-        ["{\"type\": \"done\"}", "Stream complete — UI unlocks the input field"],
-    ]
-    story.append(simple_table(
-        ["SSE Event", "Frontend Action"],
-        events,
-        col_widths=[8*cm, PAGE_W - MARGIN*2 - 8*cm]
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 4: Technology Stack
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("4. Technology Stack")
-
-    story.append(body(
-        "Every library in the stack was chosen for a specific reason. The guiding principle was "
-        "to keep the dependency surface small while covering all required functionality."
-    ))
-    story.append(sp(6))
-
-    stack = [
-        ["qwen2.5:14b", "Ollama", "LLM", "14B parameter model; strong tool-calling and instruction-following; fits on a single consumer GPU or Apple Silicon Mac"],
-        ["LangGraph", "langgraph", "Agent framework", "ReAct loop with built-in conversation state, tool routing, and async event streaming"],
-        ["langchain-ollama", "langchain-ollama", "LLM bridge", "ChatOllama wraps Ollama's HTTP API with LangChain's standard interface"],
-        ["FastAPI", "fastapi", "Web framework", "Async, schema-validated, auto-docs; minimal boilerplate for REST + SSE"],
-        ["pyodbc", "pyodbc", "SQL driver", "ODBC 18 for SQL Server; cross-platform; supports Windows Auth, SQL Auth, and Azure AD"],
-        ["sqlglot", "sqlglot", "SQL parser", "AST-level SELECT-only enforcement; rejects INSERT/UPDATE/DELETE/DDL at parse time"],
-        ["pandas", "pandas", "Data wrangling", "DataFrames used for all intermediate computation (stats, pivots, merges)"],
-        ["python-jose", "python-jose", "JWT", "HS256 token signing and verification; 24-hour token TTL"],
-        ["bcrypt", "bcrypt", "Password hashing", "bcrypt with per-password salt; stored in users.json"],
-        ["SlowAPI", "slowapi", "Rate limiting", "10 chat requests/minute/IP; wraps FastAPI with Redis-free in-memory limiter"],
-        ["ChromaDB", "chromadb", "Vector store", "Persistent local vector DB for RAG; two collections: schema metadata and policy documents"],
-        ["nomic-embed-text", "Ollama (embed)", "Embeddings", "Local embedding model for RAG; pulled via Ollama; no external API needed"],
-        ["FastMCP", "mcp", "MCP server", "stdio-based Model Context Protocol server; exposes 6 tools for model-direct data access"],
-        ["React 18", "react", "Frontend framework", "Component-based UI with hooks; Vite for build and HMR"],
-        ["Tailwind CSS v4", "tailwindcss", "Styling", "Utility-first CSS; custom design tokens (carbon, snow, fog, pewter)"],
-        ["Recharts", "recharts", "Charts", "Responsive SVG charts: bar, line, donut, area"],
-        ["Axios", "axios", "HTTP client", "Auto-attaches JWT; 401 → redirect to login"],
-        ["React Router v6", "react-router-dom", "Client routing", "SPA navigation; ProtectedRoute component enforces auth"],
-    ]
-    story.append(simple_table(
-        ["Library", "Package", "Layer", "Why chosen"],
-        stack,
-        col_widths=[3*cm, 3.5*cm, 2.5*cm, PAGE_W - MARGIN*2 - 9*cm]
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 5: Data Backend
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("5. Data Backend — SQLDataStore")
-
-    story.append(body(
-        "SQLDataStore is the single source of truth for all Excelsis360 data. It is a read-only "
-        "wrapper around a SQL Server database that provides four public methods used by both the API "
-        "routes and the agent tools. It lives in src/sql_store.py."
-    ))
-    story.append(sp())
-
-    story += section("5.1  Database Schema")
-    story.append(body(
-        "The table and column names are fully configurable via environment variables — the store "
-        "is not hardcoded to any specific schema. Defaults match the original attendance schema:"
-    ))
-    env_schema = [
-        ["PRIMARY_TABLE", "attendance", "Main table the agent queries"],
-        ["METRIC_COLUMN", "status", "Column holding the measured metric"],
-        ["POSITIVE_VALUE", "present", "Value counted as a positive outcome"],
-        ["DATE_COLUMN", "date", "Date column for time-based filtering"],
-        ["ENTITY_COLUMN", "student_id", "Primary entity key"],
-        ["ENTITY_NAME_COLUMN", "student_name", "Human-readable entity label"],
-        ["GROUP_COLUMNS", "class,grade", "Comma-separated grouping dimensions"],
-    ]
-    story.append(simple_table(
-        ["Env Var", "Default", "Purpose"],
-        env_schema,
-        col_widths=[4.5*cm, 3*cm, PAGE_W - MARGIN*2 - 7.5*cm]
-    ))
-    story.append(sp(6))
-    story.append(body(
-        "Additional databases can be queried via the database parameter of run_sql_query. "
-        "The agent adapts its T-SQL to whatever schema it discovers at runtime via retrieve_schema "
-        "and run_sql_query."
-    ))
-    story.append(sp())
-
-    story += section("5.2  SQL Safety")
-    story.append(body(
-        "Every query executed by the store passes through _assert_select_only(), which uses sqlglot "
-        "to parse the SQL into an abstract syntax tree (AST) and reject any statement that is not "
-        "a single SELECT. The following statement types are explicitly blocked:"
-    ))
-    story += bullet_list([
-        "INSERT — cannot add records",
-        "UPDATE — cannot modify records",
-        "DELETE — cannot remove records",
-        "DROP — cannot remove tables or databases",
-        "CREATE — cannot create objects",
-        "ALTER — cannot change schema",
-        "TRUNCATE — cannot clear tables",
-        "MERGE — blocked to prevent upsert-style attacks",
-        "Command — raw EXEC/xp_cmdshell etc. blocked",
-        "Multiple statements — only a single SELECT per call",
-    ])
-    story.append(sp(4))
-    story.append(body(
-        "Additionally, every database accessed must be explicitly listed in the SQL_DATABASES "
-        "environment variable. Queries against unlisted databases raise a PermissionError."
-    ))
-    story.append(sp())
-    story.append(info_box(
-        "SQL Injection Prevention",
-        [
-            "All user-supplied values (class names, date bounds, thresholds) are passed as parameterized query parameters via pyodbc — never string-interpolated into SQL.",
-            "Only the group-by column expression is built from a hardcoded allow-list dict (_GROUP_EXPR) — never from user input.",
-            "The sqlglot AST check catches multi-statement attacks (SELECT 1; DROP TABLE …) even if the parameterization were somehow bypassed.",
-        ]
-    ))
-    story.append(sp())
-
-    story += section("5.3  TTL Cache")
-    story.append(body(
-        "SQLDataStore includes a simple in-process TTL cache (_TTLCache) with a 5-minute "
-        "expiry. Both compute_stats() and get_at_risk() check the cache before hitting SQL Server. "
-        "The cache key encodes all query parameters (group_by, period, classes, date bounds) so "
-        "different filter combinations are cached independently. This reduces SQL Server load when "
-        "multiple users view the same dashboard simultaneously."
-    ))
-    story.append(sp())
-
-    story += section("5.4  Public Methods")
-    methods = [
-        ["summary()", "Returns a dict with total_records, unique_students, date_range, overall_attendance_rate, total_absences, and classes list"],
-        ["compute_stats(group_by, period, classes, date_from, date_to)", "Returns a DataFrame aggregated by the requested dimension and period; used by query_attendance, compare_periods, compare_classes, and the /data/stats endpoint"],
-        ["get_at_risk(threshold, classes, date_from, date_to)", "Returns a DataFrame of students below the threshold, ordered by attendance rate ascending"],
-        ["student_weekly_rates(student_ids, weeks)", "Returns a dict mapping student_id → list of weekly attendance rates (last N weeks); used for sparkline charts"],
-    ]
-    story.append(simple_table(
-        ["Method", "Description"],
-        methods,
-        col_widths=[5.5*cm, PAGE_W - MARGIN*2 - 5.5*cm]
-    ))
-
-    story += section("5.5  Connection Management")
-    story.append(body(
-        "Each call to _query() opens a new pyodbc connection and closes it in a finally block. "
-        "This avoids connection pool state issues across async workers but means one SQL Server "
-        "round-trip per query. For high-traffic deployments, a connection pool (e.g. SQLAlchemy "
-        "with pool_size) should be considered, but this is not needed for typical school-size loads."
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 6: AI Agent
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("6. AI Agent — ExcelsisAgent")
-
-    story.append(body(
-        "ExcelsisAgent is the intelligence layer of Excelsis 360. It wraps a LangGraph ReAct "
-        "(Reasoning + Acting) agent powered by qwen2.5:14b running locally via Ollama. The agent "
-        "decides which tools to call, in what order, based on the user's question and the "
-        "results of previous tool calls."
-    ))
-    story.append(sp())
-
-    story += section("6.1  The ReAct Loop")
-    story.append(body(
-        "ReAct is a prompting pattern that interleaves Reasoning (thinking about what to do) and "
-        "Acting (calling a tool or producing output). LangGraph implements this as a graph with "
-        "two nodes — llm and tools — that alternate until the model decides to stop:"
-    ))
-    story.append(code_block(
-"""User message
-    │
-    ▼
-LLM node  (qwen2.5:14b)
-    │ Decides to call a tool?
-    ├── YES ──► Tools node  (runs the tool, returns result)
-    │               │
-    │               └──────► LLM node  (sees tool result, decides again)
-    │
-    └── NO  ──► Final answer  (streamed token-by-token to the browser)"""
-    ))
-    story.append(sp(6))
-    story.append(body(
-        "This loop repeats until the model emits a final AIMessage with no further tool calls. "
-        "LangGraph manages the message list automatically, including injecting tool results as "
-        "ToolMessage objects."
-    ))
-    story.append(sp())
-
-    story += section("6.2  System Prompt")
-    story.append(body(
-        "The agent receives a fixed system prompt that defines its persona, responsibilities, and "
-        "tool usage rules. Key instructions include:"
-    ))
-    story += bullet_list([
-        "Identity: \"Expert Data Analyst for Excelsis 360\"",
-        "Data integrity: never fabricate statistics; say so if data is unavailable",
-        "Threshold: flag any class or student below 75% as at-risk",
-        "Efficiency: call tools immediately — never narrate a tool call before making it",
-        "SQL rules: T-SQL syntax only; SELECT-only; use TOP, DATEPART, FORMAT, CONVERT, ISNULL",
-        "Dashboard rules: call update_dashboard_view when the user asks to see a chart or visual",
-        "Conversation: answer greetings and general questions directly without calling tools",
-    ])
-    story.append(sp())
-
-    story += section("6.3  Conversation History")
-    story.append(body(
-        "ExcelsisAgent maintains a rolling conversation history of up to 10 turns (20 messages: "
-        "10 human + 10 AI). The last 10 messages are prepended to every new request, giving the "
-        "model context for follow-up questions. History can be cleared via the 'Clear history' "
-        "button in the Chat UI, which calls reset_history()."
-    ))
-    story.append(sp())
-
-    story += section("6.4  Timeout Handling")
-    story.append(body(
-        "Both the synchronous ask() method and the async astream_events() generator enforce a "
-        "240-second timeout. If the LLM does not complete within this window, the request fails "
-        "gracefully with a user-facing message rather than hanging indefinitely. The synchronous "
-        "path uses a daemon thread + queue.Queue; the async path uses asyncio.timeout()."
-    ))
-    story.append(sp())
-
-    story += section("6.5  LLM Configuration")
-    story.append(body("The ChatOllama instance is configured with:"))
-    llm_config = [
-        ["model", "qwen2.5:14b (default; overridden by MODEL env var)"],
-        ["base_url", "http://localhost:11434 (Ollama's default port)"],
-        ["temperature", "0.1 (low temperature for consistent, factual responses)"],
-        ["num_ctx", "8192 tokens context window"],
-        ["keep_alive", "10 minutes (model stays loaded in VRAM between requests)"],
-    ]
-    story.append(simple_table(
-        ["Parameter", "Value / Description"],
-        llm_config,
-        col_widths=[4*cm, PAGE_W - MARGIN*2 - 4*cm]
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 7: Agent Tools
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("7. Agent Tools")
-
-    story.append(body(
-        "The agent has access to 13 tools defined in src/tools.py. Each tool is a Python function "
-        "decorated with @tool from LangChain. The docstring is the tool description shown to the LLM. "
-        "Tools receive a RunnableConfig carrying both the SQLDataStore and ExcelsisRAGStore instances."
-    ))
-    story.append(sp())
-
-    tools_detail = [
-        (
-            "query_data",
-            "Return metric statistics grouped by a dimension and period.",
-            "group_by: str, period: str, classes, date_from, date_to",
-            "Calls store.compute_stats(). group_by accepts class, week, month, day_of_week, student_id, grade, or any configured GROUP_COLUMNS value.",
-            ["query_data(group_by='class', period='last_30_days')"],
-        ),
-        (
-            "get_threshold_alerts",
-            "List entities whose metric rate is below a threshold.",
-            "threshold: float = 75.0, classes, date_from, date_to",
-            "Calls store.get_threshold_alerts(). Returns entity_id, label, group, and metric_rate ordered ascending.",
-            ["get_threshold_alerts(threshold=70.0)"],
-        ),
-        (
-            "get_summary",
-            "Return a high-level overview of all data.",
-            "(none)",
-            "Calls store.summary(). Returns total_records, entity_count, date_range, metric_rate, and dimension list as JSON.",
-            ["get_summary()"],
-        ),
-        (
-            "update_dashboard_view",
-            "Update the live dashboard to show a specific view or filter.",
-            "classes: list[str], period: str, view: str",
-            "Returns a JSON payload; the SSE layer emits a dashboard_filter event to the browser, updating React state without a page reload.",
-            ["update_dashboard_view(segments=[\"10A\"], view=\"group\")"],
-        ),
-        (
-            "run_sql_query",
-            "Execute an ad-hoc T-SQL SELECT query.",
-            "sql: str, database: str = \"\"",
-            "Passes SQL through _assert_select_only() and the database allowlist, then executes. Auto-adds TOP 200 if absent. Returns up to 200 rows.",
-            ["SELECT TOP 10 class, COUNT(*) FROM attendance WHERE status='absent' GROUP BY class"],
-        ),
-        (
-            "compare_periods",
-            "Compare metric rates between two time periods.",
-            "period_a: str, period_b: str",
-            "Calls compute_stats() twice, merges on group, computes a delta column. Returns a side-by-side table.",
-            ["compare_periods(period_a='last_30_days', period_b='prior_30_days')"],
-        ),
-        (
-            "compare_segments",
-            "Compare metric stats for two segment values side by side.",
-            "segment_col: str, segment_a: str, segment_b: str",
-            "Filters to each segment value and returns a comparison table.",
-            ["compare_segments(segment_col='class', segment_a='10A', segment_b='10B')"],
-        ),
-        (
-            "retrieve_schema",
-            "Vector search of database table and column metadata.",
-            "query: str",
-            "Searches the excelsis_schema ChromaDB collection (auto-indexed from INFORMATION_SCHEMA). Returns top-6 matching schema chunks. Use before writing SQL.",
-            ["retrieve_schema('primary table columns')"],
-        ),
-        (
-            "retrieve_policy",
-            "Vector search of policy and rule documents.",
-            "query: str",
-            "Searches the excelsis_policy ChromaDB collection (indexed from docs/*.pdf and docs/*.md). Returns top-4 matching policy chunks.",
-            ["retrieve_policy('threshold for probation')"],
-        ),
-        (
-            "statistical_summary",
-            "Return distribution statistics for metric rates.",
-            "group_by: str, period: str",
-            "Returns count, mean, std, min, 25th/50th/75th percentile, and max across groups.",
-            ["statistical_summary(group_by='class', period='all')"],
-        ),
-        (
-            "detect_anomalies",
-            "Identify groups whose metric rate deviates more than N standard deviations from the mean.",
-            "group_by: str, sigma_threshold: float = 2.0",
-            "Computes z-scores across groups; returns those exceeding sigma_threshold.",
-            ["detect_anomalies(group_by='class', sigma_threshold=2.0)"],
-        ),
-        (
-            "get_top_n",
-            "Return the top or bottom N groups ranked by metric rate.",
-            "n: int, group_by: str, period: str, ascending: bool",
-            "Calls compute_stats() and returns the first N rows after sorting.",
-            ["get_top_n(n=5, group_by='class', ascending=True)"],
-        ),
-        (
-            "analyze_trend",
-            "Return week-over-week trend direction and slope for each group.",
-            "group_by: str",
-            "Computes weekly rates over the last 8 weeks, fits a linear slope, and returns direction (improving/declining/stable) per group.",
-            ["analyze_trend(group_by='class')"],
-        ),
-    ]
-
-    for tool_name, purpose, params, impl, examples in tools_detail:
-        story += subsection(tool_name)
-        story.append(body(f"<b>Purpose:</b> {purpose}"))
-        story.append(body(f"<b>Parameters:</b> {params}"))
-        story.append(body(f"<b>Implementation:</b> {impl}"))
-        if examples:
-            story.append(body("<b>Example calls:</b>"))
-            for ex in examples:
-                story.append(code_block(ex))
-        story.append(sp(4))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 8: REST API
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("8. REST API")
-
-    story.append(body(
-        "The FastAPI backend is available at http://localhost:8000. Interactive OpenAPI docs are "
-        "at http://localhost:8000/docs. All endpoints except /auth/login and /health require a "
-        "valid Bearer JWT in the Authorization header."
-    ))
-    story.append(sp())
-
-    story += section("8.1  Endpoints")
-    endpoints = [
-        ["POST", "/auth/login", "None", "Username + password → JWT access token (24h TTL)"],
-        ["GET", "/auth/me", "Any user", "Returns current user's username"],
-        ["GET", "/auth/users", "Admin", "List all registered usernames"],
-        ["POST", "/auth/users", "Admin", "Create a new user account"],
-        ["DELETE", "/auth/users/{username}", "Admin", "Delete a user (cannot delete 'admin')"],
-        ["POST", "/chat/stream", "Any user", "SSE streaming chat — delegates to ExcelsisAgent.astream_events()"],
-        ["GET", "/data/summary", "Any user", "Attendance data overview (calls store.summary())"],
-        ["GET", "/data/alerts", "Any user", "Threshold alerts — entities below a metric % (threshold, classes, date_from, date_to params)"],
-        ["GET", "/data/stats", "Any user", "Aggregated stats (group_by, period, classes, date_from, date_to params)"],
-        ["GET", "/data/trends", "Any user", "Current and prior 30-day weekly stats for trend comparison chart"],
-        ["GET", "/data/sparklines", "Any user", "Weekly rates for a list of student IDs (ids= CSV param)"],
-        ["GET", "/health", "None", "Returns {\"status\": \"ok\"} — liveness probe"],
-    ]
-    story.append(simple_table(
-        ["Method", "Path", "Auth", "Description"],
-        endpoints,
-        col_widths=[1.5*cm, 5*cm, 2.5*cm, PAGE_W - MARGIN*2 - 9*cm]
-    ))
-
-    story.append(sp(8))
-    story += section("8.2  Rate Limiting")
-    story.append(body(
-        "The POST /chat/stream endpoint is limited to 10 requests per minute per IP address "
-        "using SlowAPI (a FastAPI-compatible port of Flask-Limiter). Exceeding the limit returns "
-        "HTTP 429 with a Retry-After value. The rate limiter is in-process (no Redis required) — "
-        "counters reset when the server restarts."
-    ))
-    story.append(sp())
-
-    story += section("8.3  CORS")
-    story.append(body(
-        "CORS is configured to allow requests from http://localhost:5173 (Vite dev server) and "
-        "http://localhost:3000. In production, the React app is served as static files by FastAPI "
-        "itself (via StaticFiles mount), eliminating the CORS requirement entirely."
-    ))
-    story.append(sp())
-
-    story += section("8.4  Application Lifecycle")
-    story.append(body(
-        "FastAPI's lifespan context manager handles startup and shutdown. On startup:"
-    ))
-    story += bullet_list([
-        "ensure_default_admin() creates the admin account in users.json if it doesn't exist.",
-        "SQLDataStore() is instantiated and stored on app.state.store.",
-        "ExcelsisRAGStore() is instantiated (ChromaDB + nomic-embed-text via Ollama) and stored on app.state.rag_store.",
-        "ExcelsisAgent(store=store, rag_store=rag_store) is instantiated and stored on app.state.agent.",
-        "A background daemon thread runs ExcelsisRAGIngestor, which indexes docs/ and SQL INFORMATION_SCHEMA into ChromaDB.",
-        "_validate_startup() checks Ollama reachability and SQL Server connectivity, printing a status table.",
-    ])
-    story.append(body(
-        "The store and agent are shared across all requests via app.state — there is one instance "
-        "per process. The agent's conversation history is shared across users in single-process "
-        "deployments (this is intentional for a single-school use case)."
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 9: Authentication & User Management
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("9. Authentication & User Management")
-
-    story += section("9.1  User Store")
-    story.append(body(
-        "Users are stored in api/users.json as a flat dict mapping username → bcrypt hash. "
-        "On first startup, ensure_default_admin() creates the admin account with the password "
-        "from the ADMIN_PASSWORD env var (default: admin123). File writes use an atomic "
-        "write-then-rename pattern (write to .tmp, then os.replace) to prevent corruption under concurrent writes."
-    ))
-    story.append(sp())
-    story.append(code_block(
-"""{
-  "admin": {
-    "hashed_password": "$2b$12$..."
-  },
-  "ms_johnson": {
-    "hashed_password": "$2b$12$..."
-  }
-}"""
-    ))
-    story.append(sp())
-
-    story += section("9.2  JWT Tokens")
-    story.append(body(
-        "Tokens are HS256 JWTs signed with JWT_SECRET. They contain two claims:"
-    ))
-    story += bullet_list([
-        "sub — the username (used to reconstruct UserContext on each request)",
-        "exp — expiry timestamp (24 hours from issuance)",
-    ])
-    story.append(body(
-        "decode_token() reconstructs a UserContext(user_id=username) from the token on every "
-        "authenticated request. There is no token refresh mechanism — the user must re-login after 24 hours."
-    ))
-    story.append(sp())
-
-    story += section("9.3  UserContext")
-    story.append(body(
-        "UserContext is a minimal Python dataclass with a single field: user_id (the username string). "
-        "It is threaded through all agent and tool calls via LangGraph's RunnableConfig so that "
-        "tools can theoretically filter data by user. In the current implementation, there is no "
-        "row-level filtering — all authenticated users see all data. The UserContext exists to make "
-        "adding per-user filtering straightforward in the future."
-    ))
-    story.append(sp())
-
-    story += section("9.4  Admin Operations")
-    story.append(body(
-        "The 'admin' account is the only user that can access the Users management page and the "
-        "/auth/users endpoints. The admin account cannot be deleted. New users can be created or "
-        "deleted by the admin at any time. There is no password reset flow — an admin must delete "
-        "and recreate the account."
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 10: React Web Interface
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("10. React Web Interface")
-
-    story.append(body(
-        "The frontend is a React 18 single-page application built with Vite and styled with "
-        "Tailwind CSS v4. It follows a clean two-column layout (sidebar + main content) inspired "
-        "by modern productivity tools."
-    ))
-    story.append(sp())
-
-    story += section("10.1  Pages")
-    pages = [
-        ["Login (/login)", "Public", "Username + password form. POSTs to /auth/login, stores JWT in localStorage, redirects to /dashboard."],
-        ["Chat (/chat)", "Authenticated", "Natural-language chat interface. Streams responses token-by-token. Shows tool-use indicators. Displays contextual suggestion chips on first load."],
-        ["Dashboard (/dashboard)", "Authenticated", "KPI cards + 5 interactive charts + at-risk student table + drilldown panel. Embeddable chat panel ('Ask Excelsis') can update dashboard filters live."],
-        ["Users (/users)", "Admin only", "List, create, and delete user accounts. Admin cannot delete themselves."],
-    ]
-    story.append(simple_table(
-        ["Page", "Access", "Description"],
-        pages,
-        col_widths=[3.5*cm, 2.5*cm, PAGE_W - MARGIN*2 - 6*cm]
-    ))
-    story.append(sp(8))
-
-    story += section("10.2  Key Components")
-    components = [
-        ["Sidebar", "Left navigation with links to Chat, Dashboard, Users (admin only), and a logout button"],
-        ["MessageBubble", "Renders a single chat turn. User messages align right; agent messages align left with markdown rendering. Shows tool-use badges (e.g. 'Querying attendance data…')."],
-        ["ChatPanel", "Embedded chat panel on the Dashboard page. Same functionality as the Chat page but in a slide-in panel. Passes dashboard_filter events to the parent Dashboard."],
-        ["FilterBar", "Class multi-select and period dropdown. Changing either triggers a fresh data fetch for all dashboard charts."],
-        ["Breadcrumb", "Shows the current drill level (Overview → Class → Student). Click to navigate back up."],
-        ["DrilldownPanel", "Renders class-level or student-level detail depending on drill state. Student view shows a sparkline trend chart."],
-        ["MetricByGroupChart", "Horizontal bar chart of metric rate by group. Single-click filters; double-click drills down."],
-        ["WeeklyTrendChart", "Line chart of weekly metric rate over the selected period."],
-        ["MetricBreakdownChart", "Donut chart of positive / negative outcome proportions."],
-        ["WeekdayBarChart", "Bar chart of attendance rate by day of week."],
-        ["TrendComparisonChart", "Grouped bar chart comparing current vs prior 30-day periods per class."],
-        ["ProtectedRoute", "HOC that redirects unauthenticated users to /login."],
-    ]
-    story.append(simple_table(
-        ["Component", "Description"],
-        components,
-        col_widths=[4.5*cm, PAGE_W - MARGIN*2 - 4.5*cm]
-    ))
-    story.append(sp(8))
-
-    story += section("10.3  Design System")
-    story.append(body(
-        "The UI uses a minimal achromatic palette with a single accent colour. All design tokens "
-        "are defined as Tailwind CSS custom properties:"
-    ))
-    design_tokens = [
-        ["carbon", "#0d0d0d", "Primary text, headings, icons, filled buttons"],
-        ["snow", "#ffffff", "Page backgrounds, card surfaces"],
-        ["fog", "#f9f9f9", "Secondary backgrounds, sidebar, input fields, chart cards"],
-        ["arctic-mist", "#ececec", "Borders, dividers, hover backgrounds"],
-        ["pewter", "#5d5d5d", "Secondary text, placeholders, captions"],
-        ["stone", "#8f8f8f", "Tertiary text, inactive icons"],
-        ["link-blue", "#007aff", "Focus rings, interactive accents"],
-    ]
-    story.append(simple_table(
-        ["Token", "Hex", "Usage"],
-        design_tokens,
-        col_widths=[3*cm, 2.5*cm, PAGE_W - MARGIN*2 - 5.5*cm]
-    ))
-    story.append(sp(6))
-
-    story += section("10.4  SSE Client Implementation")
-    story.append(body(
-        "The browser does not use the EventSource API (which doesn't support POST requests). "
-        "Instead, streamChat() in web/src/api/client.ts uses the Fetch API with response.body "
-        "as a ReadableStream. It reads chunks, splits on newlines, strips the 'data: ' prefix, "
-        "and dispatches each event type to the appropriate callback."
-    ))
-    story.append(sp())
-
-    story += section("10.5  Authentication Flow")
-    story += bullet_list([
-        "JWT is stored in localStorage under the key 'token'.",
-        "The Axios instance (api/client.ts) automatically attaches it as 'Authorization: Bearer …' on every request.",
-        "On 401 responses, the interceptor clears localStorage and redirects to /login.",
-        "ProtectedRoute reads the token from localStorage — if absent, it redirects to /login immediately without hitting the server.",
-    ])
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 11: MCP Server
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("11. MCP Server")
-
-    story.append(body(
-        "The MCP server gives a model direct access to Excelsis 360 data without going through the "
-        "HTTP API. It runs as a stdio-based FastMCP process. On startup it initialises SQLDataStore, "
-        "ExcelsisRAGStore, and ExcelsisAgent. Identity is fixed for the process lifetime via MCP_USER_ID."
-    ))
-    story.append(sp())
-    story.append(body(
-        "Two interaction modes are available: ask_analyst routes a question through the full LangGraph "
-        "ReAct loop (the agent picks tools, reasons, and returns a complete answer); the five direct "
-        "tools bypass the agent and return raw results the calling model can reason about itself."
-    ))
-    story.append(sp())
-
-    story += section("11.1  Exposed Tools")
-    mcp_tools = [
-        ["ask_analyst(query)", "Routes a natural-language question through the full ReAct loop. The agent selects tools, reasons step-by-step, and returns a comprehensive answer."],
-        ["data_summary()", "JSON overview: record count, entity count, date range, overall metric rate. Fast — no LLM."],
-        ["threshold_alerts(threshold)", "Lists entities below the given metric threshold as a formatted table. Default: 75%."],
-        ["group_statistics(group_by, period)", "Metric stats grouped by a configured dimension and period. Returns raw DataFrame text."],
-        ["schema_lookup(query)", "Vector search of DB table/column metadata. Use before writing SQL to verify names and types."],
-        ["knowledge_lookup(query)", "Vector search of policy and rule documents. Use for threshold, exemption, or procedure questions."],
-    ]
-    story.append(simple_table(
-        ["Tool Signature", "Description"],
-        mcp_tools,
-        col_widths=[5*cm, PAGE_W - MARGIN*2 - 5*cm]
-    ))
-    story.append(sp(8))
-
-    story += section("11.2  Starting the MCP Server")
-    story.append(code_block(
-"""# From the project root with .venv active:
-MCP_USER_ID=ms_johnson python -m src.mcp_server
-
-# Or with the default user (mcp_user):
-python -m src.mcp_server"""
-    ))
-    story.append(body(
-        "The server uses the same .env configuration as the web stack — SQL_SERVER, SQL_DATABASES, "
-        "SQL_USERNAME, SQL_PASSWORD, MODEL, CHROMA_PATH, and EMBED_MODEL must all be set."
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 12: Jupyter Notebook
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("12. Jupyter Notebook")
-
-    story.append(body(
-        "Excelsis.ipynb provides a fully interactive analysis environment. It shares the same "
-        "src/ Python backend as the web application, so analysts get the same tools and agent "
-        "but in a cell-by-cell exploration format."
-    ))
-    story.append(sp())
-
-    story += section("12.1  Notebook Cells")
-    cells = [
-        ["1", "Setup & imports", "Load environment variables, import src modules"],
-        ["2", "Connectivity check", "Verify Ollama is running at http://localhost:11434; fail fast if not"],
-        ["3", "Connect to SQL Server", "Instantiate SQLDataStore and print summary"],
-        ["4", "Data summary", "Call store.summary() and display as a formatted dict"],
-        ["5", "Set analyst identity", "Set CURRENT_USER = UserContext(user_id='...') — determines the identity used for all agent calls"],
-        ["6", "Agent setup", "Instantiate ExcelsisAgent(store=store) with the SQL backend"],
-        ["7", "Chat interface", "Call agent.ask(query, user=CURRENT_USER) for natural-language queries"],
-        ["8", "Tool calls directly", "Call individual tools (query_attendance, get_at_risk_students, etc.) bypassing the LLM"],
-        ["9", "Visualisations", "Generate Plotly charts and matplotlib dashboards from the store data"],
-    ]
-    story.append(simple_table(
-        ["Cell", "Name", "Description"],
-        cells,
-        col_widths=[1.2*cm, 4*cm, PAGE_W - MARGIN*2 - 5.2*cm]
-    ))
-    story.append(sp(8))
-
-    story += section("12.2  Changing the Analyst Identity")
-    story.append(body(
-        "Edit CURRENT_USER in Cell 5 to simulate a different staff member:"
-    ))
-    story.append(code_block(
-"""CURRENT_USER = UserContext(user_id="ms_johnson")
-# or
-CURRENT_USER = UserContext(user_id="admin")"""
-    ))
-    story.append(body(
-        "In the current implementation, all users see all data. Setting CURRENT_USER primarily "
-        "affects the agent's conversation context and would enable per-user data filtering if "
-        "such logic were added to the tools."
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 13: Configuration Reference
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("13. Configuration Reference")
-
-    story.append(body(
-        "All configuration is via environment variables, typically set in .env (loaded by "
-        "python-dotenv at startup). The .env.example file documents all variables."
-    ))
-    story.append(sp(6))
-
-    env_vars = [
-        ["SQL_SERVER", "Yes", "—", "SQL Server hostname, IP, or named instance (e.g. myserver\\SQLEXPRESS)"],
-        ["SQL_DATABASES", "Yes", "—", "Comma-separated list of databases the agent is allowed to query"],
-        ["SQL_USERNAME", "If sql auth", "—", "SQL Server login username"],
-        ["SQL_PASSWORD", "If sql auth", "—", "SQL Server login password"],
-        ["SQL_PRIMARY_DB", "No", "First in SQL_DATABASES", "Default database for queries that don't specify one"],
-        ["SQL_AUTH_METHOD", "No", "sql", "Authentication method: sql | windows | azure_ad"],
-        ["SQL_DRIVER", "No", "{ODBC Driver 18 for SQL Server}", "ODBC driver string"],
-        ["JWT_SECRET", "Yes (prod)", "change-me-in-production", "Secret key for JWT signing — MUST be changed in production"],
-        ["ADMIN_PASSWORD", "No", "admin123", "Initial password for the admin account (only used on first startup)"],
-        ["MODEL", "No", "qwen2.5:14b", "Ollama model name for the ReAct agent"],
-        ["AT_RISK_THRESHOLD", "No", "75.0", "Default metric percentage threshold for at-risk flagging"],
-        ["MCP_USER_ID", "No", "mcp_user", "Username used by the MCP server process"],
-        ["PRIMARY_TABLE", "No", "attendance", "Primary SQL table the agent queries"],
-        ["METRIC_COLUMN", "No", "status", "Column holding the measured metric value"],
-        ["POSITIVE_VALUE", "No", "present", "Value counted as a positive outcome"],
-        ["DATE_COLUMN", "No", "date", "Date column for time-based filtering"],
-        ["ENTITY_COLUMN", "No", "student_id", "Primary entity key column"],
-        ["ENTITY_NAME_COLUMN", "No", "student_name", "Human-readable entity name column"],
-        ["GROUP_COLUMNS", "No", "class,grade", "Comma-separated grouping dimension columns"],
-        ["CHROMA_PATH", "No", ".chroma", "Persistent ChromaDB directory path"],
-        ["EMBED_MODEL", "No", "nomic-embed-text", "Ollama embedding model for RAG (must be pulled first)"],
-        ["DOCS_PATH", "No", "docs", "Directory scanned for policy PDFs and Markdown files"],
-    ]
-    story.append(simple_table(
-        ["Variable", "Required", "Default", "Description"],
-        env_vars,
-        col_widths=[4*cm, 2*cm, 3.5*cm, PAGE_W - MARGIN*2 - 9.5*cm]
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 14: Security Model
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("14. Security Model")
-
-    story += section("14.1  What Is Enforced")
-    story += bullet_list([
-        "<b>SQL read-only enforcement</b> — sqlglot AST parsing rejects any non-SELECT statement at the store layer, before the query reaches SQL Server.",
-        "<b>Database allowlist</b> — only databases listed in SQL_DATABASES can be queried; all others raise a PermissionError.",
-        "<b>SQL injection prevention</b> — all user-supplied values are parameterized; group-by columns come from a hardcoded allow-list.",
-        "<b>JWT authentication</b> — all API endpoints except /auth/login and /health require a valid, unexpired JWT.",
-        "<b>Password hashing</b> — all passwords are bcrypt-hashed with per-password salts; plaintext passwords are never stored.",
-        "<b>Rate limiting</b> — chat endpoint is limited to 10 requests/minute/IP to prevent abuse.",
-        "<b>Local inference</b> — all LLM inference runs on localhost via Ollama; attendance data never leaves the network.",
-        "<b>Timeout enforcement</b> — 240-second hard timeout on all agent calls prevents hanging requests.",
-    ])
-    story.append(sp())
-
-    story += section("14.2  What Is Not Enforced")
-    story.append(info_box(
-        "Known Limitations",
-        [
-            "No row-level security — all authenticated users see all student data. There is no per-teacher or per-class access control.",
-            "Shared agent history — a single ExcelsisAgent instance serves all users; conversation history is shared across sessions in single-process deployments.",
-            "users.json is not encrypted — the file contains bcrypt hashes which are computationally expensive to crack, but the file should be protected by filesystem permissions.",
-            "No HTTPS — the server runs plain HTTP by default. In production, put Nginx or Caddy in front with TLS termination.",
-            "No audit log — there is no record of which user asked which questions or ran which SQL queries.",
-            "JWT_SECRET default — the default 'change-me-in-production' secret must be changed before any production deployment.",
-            "No CSRF protection — the API is stateless (JWT, no cookies) so traditional CSRF does not apply, but the CORS allow-list should be tightened in production.",
-        ],
-        bg=WARN, border=WARN_BORD
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 15: Running the Stack
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("15. Running the Stack")
-
-    story += section("15.1  Prerequisites")
-    story += bullet_list([
-        "Python 3.11 or later",
-        "Node.js 18 or later + npm",
-        "Ollama installed and running (https://ollama.com)",
-        "SQL Server accessible from the host machine",
-        "ODBC Driver 18 for SQL Server installed on the host",
-    ])
-    story.append(sp())
-
-    story += section("15.2  First-Time Setup")
-    story.append(code_block(
-"""# 1. Pull the models (one-time downloads)
-ollama pull qwen2.5:14b          # ~8GB — ReAct agent
-ollama pull nomic-embed-text  # ~270MB — RAG embeddings
-
-# 2. Copy and configure environment
-cp .env.example .env
-# Edit .env: set SQL_SERVER, SQL_DATABASES, SQL_USERNAME, SQL_PASSWORD, JWT_SECRET
-
-# 3. Python virtual environment
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\\Scripts\\activate
-pip install -r requirements.lock   # use lock file for reproducible installs
-
-# 4. Frontend dependencies
-cd web && npm install && cd .."""
-    ))
-    story.append(sp())
-
-    story += section("15.3  Starting Both Servers")
-    story.append(code_block(
-"""bash start.sh
-# FastAPI  → http://localhost:8000
-# React    → http://localhost:5173
-# Press Ctrl-C to stop both"""
-    ))
-    story.append(sp())
-
-    story += section("15.4  Starting Servers Individually")
-    story.append(code_block(
-"""# Backend only
-source .venv/bin/activate
-uvicorn api.main:app --reload
-
-# Frontend only (separate terminal)
-cd web && npm run dev"""
-    ))
-    story.append(sp())
-
-    story += section("15.5  Default Login")
-    story += bullet_list([
-        "URL: http://localhost:5173",
-        "Username: admin",
-        "Password: value of ADMIN_PASSWORD in .env (default: admin123)",
-    ])
-    story.append(sp())
-
-    story += section("15.6  Startup Validation Output")
-    story.append(body(
-        "On startup, the backend prints a validation summary:"
-    ))
-    story.append(code_block(
-"""────────────────────────────────────────────────────
-  Excelsis 360 — startup
-  Model:      qwen2.5:14b                 OK
-  SQL Server: myserver                 OK
-  Databases:  attendance_db,reports_db
-────────────────────────────────────────────────────"""
-    ))
-    story.append(body(
-        "UNREACHABLE indicates either Ollama is not running (check: ollama list) or "
-        "SQL Server credentials are incorrect."
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 16: Test Suite
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("16. Test Suite")
-
-    story.append(body(
-        "Tests live in tests/test_qa.py. The suite is split into two classes with distinct "
-        "requirements:"
-    ))
-    story.append(sp())
-
-    story += section("16.1  Unit Tests — TestZeroKnowledge")
-    story.append(body(
-        "These tests call LangGraph tools directly with a synthetic SampleDataStore seeded "
-        "from a pandas DataFrame. No Ollama, no SQL Server, no network required. They run in "
-        "under a second and verify:"
-    ))
-    story += bullet_list([
-        "query_attendance returns data containing expected class names",
-        "get_summary returns JSON with required keys (total_records, overall_attendance_rate)",
-        "Tools return a graceful message when no store is connected",
-        "get_at_risk_students correctly identifies students below the threshold",
-        "update_dashboard_view returns valid JSON with the expected payload shape",
-    ])
-    story.append(code_block("pytest tests/test_qa.py -v"))
-    story.append(sp())
-
-    story += section("16.2  Integration Tests — TestModelStress")
-    story.append(body(
-        "These tests require a live Ollama instance with qwen2.5:14b loaded. They verify:"
-    ))
-    story += bullet_list([
-        "A multi-part complex query completes within 120 seconds and returns >50 characters",
-        "A greeting does not trigger tool calls and returns a conversational response",
-    ])
-    story.append(code_block(
-"""pytest tests/test_qa.py -v -m integration   # integration tests only
-pytest tests/test_qa.py -v --run-all         # everything"""
-    ))
-
-    # ════════════════════════════════════════════════════════════════════════
-    # Chapter 17: Extending the System
-    # ════════════════════════════════════════════════════════════════════════
-    story += chapter("17. Extending the System")
-
-    story += section("17.1  Adding a New Database")
-    story += bullet_list([
-        "Add the database name to SQL_DATABASES in .env (comma-separated).",
-        "The agent can immediately query it via run_sql_query(sql=..., database='new_db').",
-        "Update the system prompt in src/agent.py to tell the model what tables are available in the new database.",
-    ])
-    story.append(sp())
-
-    story += section("17.2  Adding a New Agent Tool")
-    story.append(body("1. Define a function in src/tools.py and decorate it with @tool:"))
-    story.append(code_block(
-"""@tool
-def my_new_tool(param: str, config: RunnableConfig = None) -> str:
-    \"\"\"Describe what the tool does — this is shown to the LLM.\"\"\"
-    store = _store(config)
-    ...
-    return result_string"""
-    ))
-    story.append(body("2. Add it to ALL_TOOLS in src/tools.py."))
-    story.append(body("3. Add a description to the Tool usage section of SYSTEM_PROMPT in src/agent.py."))
-    story.append(sp())
-
-    story += section("17.3  Changing the LLM")
-    story.append(body(
-        "Any Ollama-hosted model that supports tool calling can be used. "
-        "Set MODEL in .env. The model must support function/tool calling — "
-        "check the Ollama model page for 'tools' support. Recommended alternatives: "
-        "llama3.1:8b (faster, less accurate), mistral-small (smaller context), qwen2.5:14b."
-    ))
-    story.append(sp())
-
-    story += section("17.4  Adding a New Frontend Page")
-    story += bullet_list([
-        "Create web/src/pages/MyPage.tsx following the pattern of existing pages.",
-        "Add a route in web/src/App.tsx: <Route path='/mypage' element={<ProtectedRoute><MyPage /></ProtectedRoute>} />",
-        "Add a link in web/src/components/Sidebar.tsx.",
-        "If the page needs data, add a new endpoint in api/routers/ and include_router() in api/main.py.",
-    ])
-    story.append(sp())
-
-    story += section("17.5  Adding Per-User Data Filtering")
-    story.append(body(
-        "UserContext is already threaded through every tool call via RunnableConfig. "
-        "To add per-user filtering:"
-    ))
-    story += bullet_list([
-        "In SQLDataStore, add a user_id column to the attendance table and a user→classes mapping.",
-        "In each tool, extract user_id from config['configurable']['user_context'].user_id.",
-        "Pass allowed classes as an additional filter to store._query().",
-        "No changes to the agent or API layer are needed.",
-    ])
-    story.append(sp())
-
-    story += section("17.6  Production Deployment")
-    story += bullet_list([
-        "Set JWT_SECRET to a long random string (e.g. openssl rand -hex 32).",
-        "Set ADMIN_PASSWORD to a strong password.",
-        "Build the React app: cd web && npm run build",
-        "Mount the built files via FastAPI StaticFiles — remove the CORS middleware.",
-        "Run uvicorn with --workers 4 (multiple workers share the same SQL store but have separate agent instances and conversation histories).",
-        "Put Nginx or Caddy in front for TLS termination.",
-        "Restrict users.json file permissions: chmod 600 api/users.json",
-    ])
-
-    # ── Build ────────────────────────────────────────────────────────────────
-    doc.build(story, onFirstPage=first_page, onLaterPages=header_footer)
-    print(f"✓ PDF written to {out}")
+    s.append(h2("14.2 What Is Not Enforced"))
+    s.append(note(
+        "• No row-level security — all authenticated users see all data.<br/>"
+        "• users.json is not encrypted — protect with filesystem permissions (chmod 600).<br/>"
+        "• No HTTPS — put Nginx or Caddy in front with TLS termination in production.<br/>"
+        "• No audit log — no record of who asked what or ran which SQL queries.<br/>"
+        "• No CSRF protection — stateless JWT API; tighten CORS allow-list in production."
+    ))
+    s.append(PageBreak())
+
+    # CH 15 ───────────────────────────────────────────────────────────────────
+    s.append(h1("15. Running the Stack"))
+    s.append(h2("15.1 Prerequisites"))
+    s += [b("Python 3.11 or later"), b("Node.js 18 or later + npm"),
+          b("Ollama installed and running (https://ollama.com)"),
+          b("SQL Server accessible from the host machine"),
+          b("ODBC Driver 18 for SQL Server installed on the host")]
+    s.append(h2("15.2 First-Time Setup"))
+    s.append(pre(
+        "# 1. Pull the LLM (one-time)\n"
+        "ollama pull qwen2.5:14b           # ~8 GB\n"
+        "# BAAI/bge-small-en-v1.5 embeddings are auto-downloaded from HuggingFace on first run\n\n"
+        "# 2. Configure environment\n"
+        "cp .env.example .env\n"
+        "# Edit .env: SQL_SERVER, SQL_DATABASES, SQL_USERNAME, SQL_PASSWORD, JWT_SECRET\n\n"
+        "# 3. Python virtual environment\n"
+        "python -m venv .venv && source .venv/bin/activate\n"
+        "pip install -r requirements.lock\n\n"
+        "# 4. Frontend\n"
+        "cd web && npm install && cd .."
+    ))
+    s.append(h2("15.3 Starting Both Servers"))
+    s.append(pre("bash start.sh\n# FastAPI → http://localhost:8000\n# React   → http://localhost:5173"))
+    s.append(h2("15.4 Multi-Worker Deployment"))
+    s.append(pre(
+        "# SqliteSaver writes to CHAT_DB — all workers share history\n"
+        "# Set REDIS_URI to share rate-limit counters:\n"
+        "REDIS_URI=redis://localhost:6379 uvicorn api.main:app --workers 4"
+    ))
+    s.append(PageBreak())
+
+    # CH 16 ───────────────────────────────────────────────────────────────────
+    s.append(h1("16. Test Suite"))
+    s += [p("Tests in <font face='Courier'>tests/test_qa.py</font>. Two classes:"),
+          h2("16.1 Unit Tests — TestZeroKnowledge"),
+          p("Call tools directly with a synthetic SampleDataStore. No Ollama, no SQL Server, no network. "
+            "Runs in under a second."),
+          pre("pytest tests/test_qa.py -v"),
+          h2("16.2 Integration Tests — TestModelStress"),
+          p("Require a live Ollama instance with qwen2.5:14b. Verify complex queries complete within 120 s "
+            "and greetings do not trigger tool calls."),
+          pre("pytest tests/test_qa.py -v -m integration\npytest tests/test_qa.py -v --run-all")]
+    s.append(PageBreak())
+
+    # CH 17 ───────────────────────────────────────────────────────────────────
+    s.append(h1("17. Extending the System"))
+    s += [h2("17.1 Adding a New Database"),
+          b("Add to SQL_DATABASES in .env. The RAG ingestor auto-indexes its INFORMATION_SCHEMA on next startup."),
+          b("The agent can immediately query it via run_sql_query(sql=..., database='new_db')."),
+          h2("17.2 Adding a New Agent Tool")]
+    s.append(pre(
+        "@tool\ndef my_tool(param: str, config: RunnableConfig = None) -> str:\n"
+        '    """Describe the tool — shown to the LLM."""\n'
+        "    store = _store(config)\n    ...\n    return result_string"
+    ))
+    s += [b("Add to ALL_TOOLS in src/tools.py."),
+          b("Add description to the Tool usage section of SYSTEM_PROMPT in src/agent.py."),
+          h2("17.3 Changing the LLM"),
+          p("Set MODEL in .env to any Ollama model supporting tool calling. "
+            "Alternatives: llama3.1:8b (faster), mistral-small (smaller context)."),
+          h2("17.4 Adding a New Frontend Page"),
+          b("Create web/src/pages/MyPage.tsx following existing page patterns."),
+          b("Add a route in web/src/App.tsx and a link in Sidebar.tsx."),
+          b("If data is needed, add an endpoint in api/routers/ and include_router() in api/main.py."),
+          h2("17.5 Adding Per-User Data Filtering"),
+          p("UserContext (user_id) is available to all agent calls. To add filtering:"),
+          b("Add a user→group mapping table to SQL Server."),
+          b("Read user_id from the store or rag_store references in the tool's config dict."),
+          b("Pass allowed groups as an additional filter to store methods."),
+          h2("17.6 Production Deployment"),
+          b("Set JWT_SECRET: <font face='Courier'>openssl rand -hex 32</font>"),
+          b("Set ADMIN_PASSWORD to a strong password."),
+          b("Build React: <font face='Courier'>cd web && npm run build</font>. Mount via FastAPI StaticFiles."),
+          b("Set CHAT_DB to a persistent path: e.g. <font face='Courier'>CHAT_DB=/data/chat.db</font>"),
+          b("Set REDIS_URI for shared rate limiting: <font face='Courier'>REDIS_URI=redis://localhost:6379</font>"),
+          b("Run: <font face='Courier'>uvicorn api.main:app --workers 4</font> — all workers share SqliteSaver history and Redis rate counters."),
+          b("Put Nginx or Caddy in front for TLS."),
+          b("<font face='Courier'>chmod 600 api/users.json</font>")]
+
+    doc.build(s, onFirstPage=_tmpl, onLaterPages=_tmpl)
+    print("✓  Generated: Excelsis 360 Analyst Agent.pdf")
 
 
 if __name__ == "__main__":

@@ -288,6 +288,7 @@ export default function Dashboard() {
           sparklines={sparklines}
           loading={loading}
           onInspect={handleInspect}
+          selection={selection}
         />
 
       </div>
