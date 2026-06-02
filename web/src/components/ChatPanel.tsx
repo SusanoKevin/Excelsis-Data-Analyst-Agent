@@ -14,22 +14,32 @@ interface Props {
 export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter }: Props) {
   const { messages, streaming, send, clearHistory } = useChat(onDashboardFilter)
   const [input, setInput] = useState('')
-  const bottomRef   = useRef<HTMLDivElement>(null)
-  const scrollRef   = useRef<HTMLDivElement>(null)
-  const suggestions = buildSuggestions(atRisk, summary)
+  const scrollRef           = useRef<HTMLDivElement>(null)
+  const userScrolled        = useRef(false)
+  const programmaticScroll  = useRef(false)
+  const suggestions         = buildSuggestions(atRisk, summary)
 
-  useEffect(() => {
+  const handleScroll = () => {
+    if (programmaticScroll.current) return
     const el = scrollRef.current
     if (!el) return
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (distanceFromBottom < 120) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
+    userScrolled.current = el.scrollHeight - el.scrollTop - el.clientHeight > 120
+  }
+
+  useEffect(() => {
+    if (userScrolled.current) return
+    const el = scrollRef.current
+    if (!el) return
+    // instant scroll so no animation fires scroll events and flips userScrolled
+    programmaticScroll.current = true
+    el.scrollTop = el.scrollHeight
+    programmaticScroll.current = false
   }, [messages])
 
   const handleSend = (text: string) => {
     const q = text.trim()
     if (!q || streaming) return
+    userScrolled.current = false
     setInput('')
     send(q)
   }
@@ -67,6 +77,7 @@ export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter 
 
       <div
         ref={scrollRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 py-4"
         aria-live="polite"
         aria-label="Conversation"
@@ -87,7 +98,6 @@ export default function ChatPanel({ atRisk, summary, onClose, onDashboardFilter 
         ) : (
           <>
             {messages.map((m, i) => <MessageBubble key={i} msg={m} />)}
-            <div ref={bottomRef} />
           </>
         )}
       </div>

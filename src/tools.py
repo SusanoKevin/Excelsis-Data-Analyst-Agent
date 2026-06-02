@@ -13,9 +13,46 @@ _VALID_VIEWS   = frozenset({"overview", "group", "entity"})
 
 
 def _df_to_text(df: pd.DataFrame, max_rows: int = 50) -> str:
+    """Return a compact analytical summary for the LLM.
+
+    The full dataset is rendered as an interactive table for the user via the
+    artifact — the LLM only needs enough context to write analysis, not to
+    reproduce the data.
+    """
     if df.empty:
         return "No data available."
-    return df.head(max_rows).to_string(index=False)
+
+    total = len(df)
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+    # Aggregate stats for each numeric column
+    stats: dict = {}
+    for col in numeric_cols:
+        s = df[col]
+        stats[col] = {
+            "min": round(float(s.min()), 2),
+            "max": round(float(s.max()), 2),
+            "mean": round(float(s.mean()), 2),
+        }
+
+    # Sort by the last numeric column (usually metric_rate or delta) to surface
+    # top and bottom performers for the LLM to cite specific examples
+    sort_col = numeric_cols[-1] if numeric_cols else None
+    sorted_df = df.sort_values(sort_col, ascending=False) if sort_col else df
+    top = sorted_df.head(5).to_dict(orient="records")
+    bottom = sorted_df.tail(5).to_dict(orient="records")
+
+    return json.dumps({
+        "total_rows": total,
+        "columns": df.columns.tolist(),
+        "stats": stats,
+        "top_5": top,
+        "bottom_5": bottom,
+        "instruction": (
+            "The full table is already displayed to the user. "
+            "Write analysis only — do not reproduce or reformat this data."
+        ),
+    })
 
 
 def _df_to_artifact(df: pd.DataFrame, max_rows: int = 50) -> dict:
