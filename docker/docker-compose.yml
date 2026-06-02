@@ -27,6 +27,14 @@ services:
       retries: 12
       start_period: 30s
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     volumes:
@@ -57,3 +65,4 @@ services:
 volumes:
   sqlserver_data:
   grafana_data:
+  redis_data:
