@@ -20,6 +20,7 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 - **Persistent conversation history** — per-user chat history stored in a SQLite file (`CHAT_DB`) via LangGraph's `SqliteSaver` checkpointer; survives restarts and is shared across Uvicorn workers
 - **Jupyter notebook** — full interactive analysis environment that shares the same `src/` backend
 - **MCP server** — exposes Excelsis360 data tools to Claude Code via FastMCP
+- **Observability** — Prometheus metrics (`agent_tool_invocations_total`, `agent_query_duration_seconds`, `agent_query_errors_total`, `cache_hits_total`, `cache_misses_total`) via `src/tracker.py`; optional MLflow experiment tracking when `MLFLOW_TRACKING_URI` is set; `/metrics` scrape endpoint always active
 
 ---
 
@@ -39,6 +40,8 @@ AI-powered data analyst for the Excelsis360 platform, built on a LangGraph ReAct
 | Embeddings | `BAAI/bge-small-en-v1.5` via HuggingFace (auto-downloaded) |
 | Rate limiter | slowapi + Redis (`REDIS_URI`, optional) |
 | Conversation history | LangGraph `SqliteSaver` (`chat.db`) |
+| Metrics | `prometheus-client` + `prometheus-fastapi-instrumentator` |
+| Experiment tracking | `mlflow` (optional, enabled via `MLFLOW_TRACKING_URI`) |
 
 ---
 

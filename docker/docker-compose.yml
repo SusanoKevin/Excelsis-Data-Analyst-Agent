@@ -27,5 +27,33 @@ services:
       retries: 12
       start_period: 30s
 
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:-admin}"
+      SQL_USERNAME: "${SQL_USERNAME:-sa}"
+      SQL_PASSWORD: "${MSSQL_SA_PASSWORD:-}"
+      SQL_PRIMARY_DB: "${SQL_PRIMARY_DB:-master}"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   sqlserver_data:
+  grafana_data:

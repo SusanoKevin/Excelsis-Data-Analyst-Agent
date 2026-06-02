@@ -34,7 +34,7 @@ class ExcelsisRAGStore:
             persist_directory=chroma_path,
         )
         rag_ttl = int(os.environ.get("RAG_CACHE_TTL", "3600"))
-        self._cache = _TTLCache(ttl=rag_ttl, maxsize=256)
+        self._cache = _TTLCache(ttl=rag_ttl, maxsize=256, name="rag")
 
     def schema_collection(self) -> Chroma:
         return self._schema_vs

@@ -1,0 +1,23 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    url: http://prometheus:9090
+    isDefault: true
+    access: proxy
+    editable: true
+
+  - name: Excelsis SQL Server
+    type: mssql
+    uid: excelsis-sqlserver
+    url: sqlserver:1433
+    database: "${SQL_PRIMARY_DB}"
+    user: "${SQL_USERNAME}"
+    secureJsonData:
+      password: "${SQL_PASSWORD}"
+    jsonData:
+      authenticationType: "SQL Server Authentication"
+      encrypt: "disable"
+    editable: true

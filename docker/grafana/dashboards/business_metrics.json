@@ -1,0 +1,180 @@
+{
+  "title": "Excelsis 360 — Business Metrics",
+  "uid": "excelsis-business",
+  "description": "SQL queries use default schema config (PRIMARY_TABLE=attendance, METRIC_COLUMN=status, POSITIVE_VALUE=active, DATE_COLUMN=date, ENTITY_COLUMN=entity_id). Update queries in Grafana UI to match your env vars.",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-30d", "to": "now" },
+  "tags": ["excelsis", "business"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Records",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+          "rawSql": "SELECT COUNT(*) AS value FROM attendance",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Overall Metric Rate %",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+          "rawSql": "SELECT AVG(CAST(CASE WHEN status = 'active' THEN 1.0 ELSE 0.0 END AS FLOAT)) * 100 AS value FROM attendance",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 85 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Data Freshness (days since last record)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+          "rawSql": "SELECT DATEDIFF(DAY, MAX(CAST(date AS DATE)), GETDATE()) AS value FROM attendance",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 7 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Active Entities",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+          "rawSql": "SELECT COUNT(DISTINCT entity_id) AS value FROM attendance",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Metric Rate Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+          "rawSql": "SELECT CAST(date AS DATE) AS time, AVG(CAST(CASE WHEN status = 'active' THEN 1.0 ELSE 0.0 END AS FLOAT)) * 100 AS [Metric Rate %] FROM attendance WHERE $__timeFilter(date) GROUP BY CAST(date AS DATE) ORDER BY 1",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percent" }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Entities Below 75% Threshold",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+          "rawSql": "SELECT TOP 50 entity_id AS [Entity ID], entity_name AS [Name], AVG(CAST(CASE WHEN status = 'active' THEN 1.0 ELSE 0.0 END AS FLOAT)) * 100 AS [Rate %] FROM attendance GROUP BY entity_id, entity_name HAVING AVG(CAST(CASE WHEN status = 'active' THEN 1.0 ELSE 0.0 END AS FLOAT)) * 100 < 75 ORDER BY [Rate %] ASC",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Rate %" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": null },
+                    { "color": "yellow", "value": 60 }
+                  ]
+                }
+              },
+              { "id": "custom.displayMode", "value": "color-background" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "title": "Top 15 Entities by Metric Rate",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "mssql", "uid": "excelsis-sqlserver" },
+          "rawSql": "SELECT TOP 15 entity_name AS [Entity], AVG(CAST(CASE WHEN status = 'active' THEN 1.0 ELSE 0.0 END AS FLOAT)) * 100 AS [Rate %] FROM attendance GROUP BY entity_id, entity_name ORDER BY [Rate %] DESC",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percent" }
+      }
+    }
+  ],
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "links": []
+}

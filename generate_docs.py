@@ -99,7 +99,7 @@ def _cover(canvas, doc):
     canvas.setFont("Helvetica", 16)
     canvas.drawString(MARGIN, H - 4.2*cm, "Data Analyst Agent")
     canvas.setFont("Helvetica", 11); canvas.setFillColor(colors.HexColor("#aaaaaa"))
-    canvas.drawString(MARGIN, H - 5.0*cm, "Technical Documentation  ·  v1.1")
+    canvas.drawString(MARGIN, H - 5.0*cm, "Technical Documentation  ·  v1.2")
     canvas.restoreState()
 
 def _page(canvas, doc):
@@ -132,7 +132,7 @@ def build():
     s += [Spacer(1,7*cm), p("Technical Documentation", CVSB), sp(10),
           p("An AI-powered data analyst for the Excelsis360 platform,<br/>"
             "built on locally-hosted LLMs, SQL Server, and a React web interface.", CVSB),
-          sp(20), hr(), p("Version 1.1  ·  June 2026", CVMT), PageBreak()]
+          sp(20), hr(), p("Version 1.2  ·  June 2026", CVMT), PageBreak()]
 
     # TOC
     s.append(h1("Table of Contents"))
@@ -297,6 +297,8 @@ def build():
         td("redis",             "redis",                     "Cache backend",      "Optional; shared rate-limit counters across workers"),
         td("ChromaDB",          "chromadb",                  "Vector store",       "Persistent local vector DB; schema + policy collections"),
         td("HuggingFace Embed", "langchain-huggingface",     "Embeddings",         "BAAI/bge-small-en-v1.5 — auto-downloaded; no Ollama pull"),
+        td("prometheus-client", "prometheus-client + prometheus-fastapi-instrumentator", "Metrics", "Agent tool invocations, query duration, errors, cache hit/miss; /metrics scrape endpoint"),
+        td("MLflow",            "mlflow",                    "Experiment tracking","Optional; each agent query becomes an MLflow run when MLFLOW_TRACKING_URI is set"),
         td("FastMCP",           "mcp",                       "MCP server",         "stdio FastMCP; 6 tools for model-direct data access"),
         td("React 18",          "react",                     "Frontend",           "Hooks-based SPA; Vite build and HMR"),
         td("Tailwind CSS v4",   "tailwindcss",               "Styling",            "Utility-first; custom design tokens"),
@@ -342,11 +344,18 @@ def build():
             "system schema access."),
           h3("SQL Injection Prevention"),
           b("All user-supplied values are parameterised via pyodbc — never string-interpolated."),
-          b("Group-by column expressions come from a hardcoded allow-list dict (_group_expr)."),
+          b("Group-by column expressions come from a hardcoded allow-list dict (_group_expr). "
+            "Unambiguous prefix aliases (e.g. <font face='Courier'>\"class\"</font> → "
+            "<font face='Courier'>\"class_section\"</font>) are resolved before validation; "
+            "ambiguous or unknown values surface a clear valid-keys error."),
           b("sqlglot AST check catches multi-statement attacks even if parameterisation were bypassed."),
           h2("5.3 TTL Cache"),
           p("In-process _TTLCache with 5-minute expiry. All query methods check before hitting SQL Server. "
-            "Cache key encodes all parameters so different filter combinations are cached independently."),
+            "Cache key encodes all parameters so different filter combinations are cached independently. "
+            "Each cache instance is labelled by name (e.g. <font face='Courier'>\"sql\"</font>, "
+            "<font face='Courier'>\"rag\"</font>) and emits "
+            "<font face='Courier'>cache_hits_total</font> / <font face='Courier'>cache_misses_total</font> "
+            "Prometheus counters so cache effectiveness is visible in the /metrics scrape."),
           h2("5.4 Public Methods")]
     s.append(tbl([
         th("Method","Description"),
@@ -407,6 +416,28 @@ def build():
         td("num_ctx",    "8192 tokens context window"),
         td("keep_alive", "10 minutes — model stays loaded in VRAM between requests"),
     ], [3.5*cm, cw-3.5*cm]))
+
+    s += [h2("6.6 Monitoring & Observability"),
+          p("<font face='Courier'>src/tracker.py</font> provides <b>QueryTracker</b> — a per-request "
+            "wrapper that records tool use, token estimates, latency, and errors both to Prometheus and "
+            "optionally to MLflow."),
+          h3("Prometheus Metrics"),
+          b("<font face='Courier'>agent_tool_invocations_total</font> [label: tool] — incremented each "
+            "time the agent calls a named tool."),
+          b("<font face='Courier'>agent_query_duration_seconds</font> — histogram (buckets 0.5 s – 240 s) "
+            "of full agent invocation latency."),
+          b("<font face='Courier'>agent_query_errors_total</font> — incremented on any agent exception."),
+          b("<font face='Courier'>cache_hits_total</font> / <font face='Courier'>cache_misses_total</font> "
+            "[label: cache] — emitted by every _TTLCache instance; distinguishes "
+            "<font face='Courier'>sql</font> vs <font face='Courier'>rag</font> caches."),
+          p("All metrics are scraped via the Prometheus scrape endpoint at <b>GET /metrics</b> (exposed "
+            "automatically by <font face='Courier'>prometheus_fastapi_instrumentator</font> on startup)."),
+          h3("MLflow (optional)"),
+          p("Set <font face='Courier'>MLFLOW_TRACKING_URI</font> to enable experiment tracking. Each "
+            "agent invocation becomes an MLflow run under the <b>excelsis</b> experiment, logging: "
+            "tool invocation counts, estimated token count, query latency (seconds), and user_id. "
+            "When <font face='Courier'>MLFLOW_TRACKING_URI</font> is unset, all tracking calls are "
+            "no-ops — zero overhead.")]
     s.append(PageBreak())
 
     # CH 7 ────────────────────────────────────────────────────────────────────
@@ -476,6 +507,7 @@ def build():
         td("GET",    "/data/trends",           "Any",     "Current + prior 30-day weekly stats"),
         td("GET",    "/data/sparklines",       "Any",     "Weekly rates for entity IDs (ids= CSV)"),
         td("GET",    "/health",                "None",    '{"status": "ok", "rag_ready": bool}'),
+        td("GET",    "/metrics",              "None",    "Prometheus scrape endpoint (prometheus_fastapi_instrumentator)"),
     ], [1.5*cm, 4.8*cm, 1.8*cm, cw-8.1*cm]))
     s += [h2("8.2 Rate Limiting"),
           p("POST /chat/stream is limited to 10 req/min per user (authenticated) or IP (unauthenticated). "
@@ -696,7 +728,13 @@ def build():
           h2("16.2 Integration Tests — TestModelStress"),
           p("Require a live Ollama instance with qwen2.5:14b. Verify complex queries complete within 120 s "
             "and greetings do not trigger tool calls."),
-          pre("pytest tests/test_qa.py -v -m integration\npytest tests/test_qa.py -v --run-all")]
+          pre("pytest tests/test_qa.py -v -m integration\npytest tests/test_qa.py -v --run-all"),
+          h2("16.3 Security Tests — test_security.py"),
+          p("352-line security-focused test suite in <font face='Courier'>tests/test_security.py</font>. "
+            "Covers prompt guard (injection patterns, length cap, token budget), SQL guard "
+            "(_assert_select_only: DML rejection, system-schema blocking, multi-statement attacks), "
+            "and auth (JWT sign/verify, bcrypt hashing, token expiry). No network or Ollama required."),
+          pre("pytest tests/test_security.py -v")]
     s.append(PageBreak())
 
     # CH 17 ───────────────────────────────────────────────────────────────────

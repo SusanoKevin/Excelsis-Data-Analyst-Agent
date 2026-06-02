@@ -11,6 +11,8 @@ load_dotenv()  # must run before any src.* imports that read env vars
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_client import Counter
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi.errors import RateLimitExceeded
 
 from api.auth import ensure_default_admin
@@ -18,6 +20,8 @@ from api.limiter import limiter
 from api.routers.auth import router as auth_router
 from api.routers.chat import router as chat_router
 from api.routers.data import router as data_router
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
 from src.agent import ExcelsisAgent
 from src.rag_ingestor import run_ingestion
 from src.rag_store import ExcelsisRAGStore
@@ -67,35 +71,46 @@ async def lifespan(app: FastAPI):
     )
     app.state.store     = store
     app.state.rag_store = rag_store
-    app.state.agent     = ExcelsisAgent(store=store, rag_store=rag_store)
-    log_startup_config()
 
-    app.state.rag_ready = False
+    async with AsyncSqliteSaver.from_conn_string(os.getenv("CHAT_DB", "./chat.db")) as checkpointer:
+        app.state.agent = ExcelsisAgent(store=store, rag_store=rag_store, checkpointer=checkpointer)
+        log_startup_config()
 
-    docs_path = os.getenv("DOCS_PATH", "docs")
+        app.state.rag_ready = False
 
-    def _ingest_and_mark():
-        run_ingestion(rag_store, store, docs_path)
-        app.state.rag_ready = True
+        docs_path = os.getenv("DOCS_PATH", "docs")
 
-    threading.Thread(
-        target=_ingest_and_mark,
-        daemon=False,
-        name="rag-ingestor",
-    ).start()
+        def _ingest_and_mark():
+            run_ingestion(rag_store, store, docs_path)
+            app.state.rag_ready = True
 
-    await asyncio.to_thread(_validate_startup, store)
-    yield
+        threading.Thread(
+            target=_ingest_and_mark,
+            daemon=False,
+            name="rag-ingestor",
+        ).start()
+
+        await asyncio.to_thread(_validate_startup, store)
+        yield
+
     store.close()
 
 
 async def _on_rate_limit_exceeded(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    _rate_limit_counter.labels(path=request.url.path).inc()
     retry = getattr(exc, "retry_after", None)
     msg   = f"Rate limit exceeded. Try again in {retry}s." if retry else "Rate limit exceeded."
     return JSONResponse(status_code=429, content={"detail": msg})
 
 
 app = FastAPI(title="Excelsis 360 API", lifespan=lifespan)
+Instrumentator().instrument(app).expose(app, include_in_schema=False)
+
+_rate_limit_counter: Counter = Counter(
+    "rate_limit_exceeded_total",
+    "Total rate limit exceeded rejections",
+    ["path"],
+)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _on_rate_limit_exceeded)

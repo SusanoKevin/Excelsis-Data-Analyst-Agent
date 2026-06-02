@@ -4,9 +4,26 @@ import logging
 import os
 import time
 
+from prometheus_client import Counter, Histogram
+
 logger = logging.getLogger(__name__)
 
 _MLFLOW_ENABLED: bool = bool(os.environ.get("MLFLOW_TRACKING_URI", "").strip())
+
+_prom_tool_invocations: Counter = Counter(
+    "agent_tool_invocations_total",
+    "Total agent tool invocations by tool name",
+    ["tool"],
+)
+_prom_query_duration: Histogram = Histogram(
+    "agent_query_duration_seconds",
+    "End-to-end agent query latency in seconds",
+    buckets=[0.5, 1, 2, 5, 10, 30, 60, 120, 240],
+)
+_prom_query_errors: Counter = Counter(
+    "agent_query_errors_total",
+    "Total agent query errors",
+)
 
 
 class QueryTracker:
@@ -28,9 +45,9 @@ class QueryTracker:
             self._mlflow = _mlflow
 
     def start(self, user_id: str, query: str) -> None:
+        self._start_time = time.monotonic()
         if not self._active:
             return
-        self._start_time = time.monotonic()
         self._mlflow.set_experiment("excelsis-agent")
         self._run = self._mlflow.start_run()
         self._mlflow.set_tag("user_id", user_id)
@@ -42,6 +59,7 @@ class QueryTracker:
         })
 
     def record_tool(self, tool_name: str) -> None:
+        _prom_tool_invocations.labels(tool=tool_name).inc()
         if not self._active:
             return
         self._tool_counts[tool_name] = self._tool_counts.get(tool_name, 0) + 1
@@ -52,17 +70,21 @@ class QueryTracker:
         self._token_chars += char_count
 
     def record_error(self) -> None:
+        _prom_query_errors.inc()
         if not self._active:
             return
         self._error = 1
 
     def finish(self) -> None:
+        elapsed = (time.monotonic() - self._start_time) if self._start_time else 0.0
+        if elapsed:
+            _prom_query_duration.observe(elapsed)
+            self._start_time = 0.0
         if not self._active or self._run is None:
             return
         try:
-            elapsed_ms = (time.monotonic() - self._start_time) * 1000
             self._mlflow.log_metrics({
-                "query_latency_ms": elapsed_ms,
+                "query_latency_ms": elapsed * 1000,
                 "tool_count":       float(sum(self._tool_counts.values())),
                 "tokens_estimated": float(self._token_chars // 4),
                 "error":            float(self._error),

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import queue
+import sqlite3
 import threading
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -18,6 +19,18 @@ from .tools import ALL_TOOLS
 from .tracker import QueryTracker
 
 logger = logging.getLogger(__name__)
+
+_INVALID_HISTORY_MARKERS = (
+    "ToolMessage",
+    "INVALID_CHAT_HISTORY",
+    "tool_calls that do not have a corresponding",
+)
+
+
+def _is_invalid_history_error(exc: Exception) -> bool:
+    msg = str(exc)
+    return any(marker in msg for marker in _INVALID_HISTORY_MARKERS)
+
 
 SYSTEM_PROMPT = """You are an expert Data Analyst for Excelsis 360.
 
@@ -91,16 +104,31 @@ _llm = ChatOllama(
 
 
 class ExcelsisAgent:
-    def __init__(self, store=None, rag_store=None) -> None:
-        self._checkpointer = SqliteSaver.from_conn_string(os.getenv("CHAT_DB", "./chat.db"))
+    def __init__(self, store=None, rag_store=None, checkpointer=None) -> None:
+        if checkpointer is None:
+            _conn = sqlite3.connect(os.getenv("CHAT_DB", "./chat.db"), check_same_thread=False)
+            checkpointer = SqliteSaver(_conn)
         self._graph = create_react_agent(
             model=_llm,
             tools=ALL_TOOLS,
             prompt=SystemMessage(content=SYSTEM_PROMPT),
-            checkpointer=self._checkpointer,
+            checkpointer=checkpointer,
         )
         self._store     = store
         self._rag_store = rag_store
+
+    def _clear_thread(self, thread_id: str) -> None:
+        """Delete all checkpoint rows for a thread to recover from corrupted state."""
+        db_path = os.getenv("CHAT_DB", "./chat.db")
+        tables = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+        with sqlite3.connect(db_path, timeout=10) as conn:
+            for table in tables:
+                try:
+                    conn.execute(f"DELETE FROM {table} WHERE thread_id = ?", (thread_id,))
+                except sqlite3.OperationalError:
+                    pass
+            conn.commit()
+        logger.warning("Cleared corrupted checkpoint history for thread_id=%s", thread_id)
 
     def _build_config(self, user: UserContext) -> dict:
         return {
@@ -120,13 +148,22 @@ class ExcelsisAgent:
         config, messages = self._prepare(query, user)
         tracker = QueryTracker()
         tracker.start((user or ADMIN_USER).user_id, query)
+        thread_id = config["configurable"]["thread_id"]
         result_q: queue.Queue = queue.Queue()
 
         def _run() -> None:
             try:
                 result_q.put(("ok", self._graph.invoke({"messages": messages}, config=config)))
             except Exception as e:
-                logger.exception("Agent invoke failed for user=%s", config["configurable"]["thread_id"])
+                if _is_invalid_history_error(e):
+                    self._clear_thread(thread_id)
+                    try:
+                        result_q.put(("ok", self._graph.invoke({"messages": messages}, config=config)))
+                        return
+                    except Exception as retry_exc:
+                        result_q.put(("err", retry_exc))
+                        return
+                logger.exception("Agent invoke failed for user=%s", thread_id)
                 result_q.put(("err", e))
 
         t = threading.Thread(target=_run, daemon=True)
@@ -153,46 +190,61 @@ class ExcelsisAgent:
         config, messages = self._prepare(message, user)
         tracker = QueryTracker()
         tracker.start((user or ADMIN_USER).user_id, message)
+        thread_id = config["configurable"]["thread_id"]
+        retried = False
 
         try:
             async with asyncio.timeout(_TIMEOUT):
-                async for event in self._graph.astream_events(
-                    {"messages": messages},
-                    config=config,
-                    version="v2",
-                ):
-                    kind = event.get("event", "")
+                while True:
+                    try:
+                        async for event in self._graph.astream_events(
+                            {"messages": messages},
+                            config=config,
+                            version="v2",
+                        ):
+                            kind = event.get("event", "")
 
-                    if kind == "on_chat_model_stream":
-                        chunk = event.get("data", {}).get("chunk")
-                        if chunk and hasattr(chunk, "content") and chunk.content:
-                            tracker.record_tokens(len(chunk.content))
-                            yield {"type": "token", "content": chunk.content}
+                            if kind == "on_chat_model_stream":
+                                chunk = event.get("data", {}).get("chunk")
+                                if chunk and hasattr(chunk, "content") and chunk.content:
+                                    tracker.record_tokens(len(chunk.content))
+                                    yield {"type": "token", "content": chunk.content}
 
-                    elif kind == "on_tool_start":
-                        name = event.get("name", "")
-                        tracker.record_tool(name)
-                        yield {"type": "tool_start", "tool": name}
+                            elif kind == "on_tool_start":
+                                name = event.get("name", "")
+                                tracker.record_tool(name)
+                                yield {"type": "tool_start", "tool": name}
 
-                    elif kind == "on_tool_end":
-                        name = event.get("name", "")
-                        yield {"type": "tool_end", "tool": name}
-                        raw = event.get("data", {}).get("output")
-                        if name == "update_dashboard_view":
-                            output = raw.content if hasattr(raw, "content") else str(raw)
-                            try:
-                                payload = json.loads(output)
-                                yield {
-                                    "type":    "dashboard_filter",
-                                    "classes": payload.get("segments", []),
-                                    "period":  payload.get("period", "all"),
-                                    "view":    payload.get("view", "overview"),
-                                }
-                            except (json.JSONDecodeError, AttributeError):
-                                pass
-                        artifact = getattr(raw, "artifact", None)
-                        if isinstance(artifact, dict) and "columns" in artifact:
-                            yield {"type": "tool_data", "tool": name, **artifact}
+                            elif kind == "on_tool_end":
+                                name = event.get("name", "")
+                                yield {"type": "tool_end", "tool": name}
+                                raw = event.get("data", {}).get("output")
+                                if name == "update_dashboard_view":
+                                    output = raw.content if hasattr(raw, "content") else str(raw)
+                                    try:
+                                        payload = json.loads(output)
+                                        yield {
+                                            "type":    "dashboard_filter",
+                                            "classes": payload.get("segments", []),
+                                            "period":  payload.get("period", "all"),
+                                            "view":    payload.get("view", "overview"),
+                                        }
+                                    except (json.JSONDecodeError, AttributeError):
+                                        pass
+                                artifact = getattr(raw, "artifact", None)
+                                if isinstance(artifact, dict) and "columns" in artifact:
+                                    yield {"type": "tool_data", "tool": name, **artifact}
+                        break  # stream completed successfully
+                    except ValueError as exc:
+                        if not retried and _is_invalid_history_error(exc):
+                            retried = True
+                            await asyncio.to_thread(self._clear_thread, thread_id)
+                            logger.warning(
+                                "Retrying after clearing invalid checkpoint for thread_id=%s",
+                                thread_id,
+                            )
+                            continue
+                        raise
 
         except asyncio.TimeoutError:
             tracker.record_error()
