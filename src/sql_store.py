@@ -9,10 +9,22 @@ from urllib.parse import quote_plus
 import numpy as np
 import pandas as pd
 import sqlglot
+from prometheus_client import Counter
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import QueuePool
 from sqlglot import exp
+
+_cache_hits: Counter = Counter(
+    "cache_hits_total",
+    "Cache hits by cache name",
+    ["cache"],
+)
+_cache_misses: Counter = Counter(
+    "cache_misses_total",
+    "Cache misses by cache name",
+    ["cache"],
+)
 
 _FORBIDDEN = (
     exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create,
@@ -75,21 +87,25 @@ def _build_engine(database: str) -> Engine:
 
 
 class _TTLCache:
-    def __init__(self, ttl: int = 300, maxsize: int = 0) -> None:
+    def __init__(self, ttl: int = 300, maxsize: int = 0, name: str = "sql") -> None:
         self._store: dict = {}
         self._ttl = ttl
         self._maxsize = maxsize
         self._lock = threading.Lock()
+        self._name = name
 
     def get(self, key: str):
         with self._lock:
             entry = self._store.get(key)
             if entry is None:
+                _cache_misses.labels(cache=self._name).inc()
                 return None
             value, expires = entry
             if time.monotonic() > expires:
                 self._store.pop(key, None)
+                _cache_misses.labels(cache=self._name).inc()
                 return None
+            _cache_hits.labels(cache=self._name).inc()
             return value
 
     def set(self, key: str, value) -> None:
@@ -268,7 +284,11 @@ class SQLDataStore:
             return cached
 
         if group_by not in self._group_expr:
-            raise ValueError(f"Invalid group_by '{group_by}'. Valid: {', '.join(self._group_expr)}")
+            matches = [k for k in self._group_expr if k.startswith(group_by)]
+            if len(matches) == 1:
+                group_by = matches[0]
+            else:
+                raise ValueError(f"Invalid group_by '{group_by}'. Valid: {', '.join(self._group_expr)}")
         col_expr, col_alias = self._group_expr[group_by]
         t  = self._q(self._table)
         mc = self._q(self._metric_col)
