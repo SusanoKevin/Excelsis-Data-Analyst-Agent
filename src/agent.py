@@ -207,7 +207,6 @@ class ExcelsisAgent:
                             if kind == "on_chat_model_stream":
                                 chunk = event.get("data", {}).get("chunk")
                                 if chunk and hasattr(chunk, "content") and chunk.content:
-                                    tracker.record_tokens(len(chunk.content))
                                     yield {"type": "token", "content": chunk.content}
 
                             elif kind == "on_tool_start":

@@ -26,7 +26,7 @@ from src.agent import ExcelsisAgent
 from src.rag_ingestor import run_ingestion
 from src.rag_store import ExcelsisRAGStore
 from src.sql_store import SQLDataStore
-from src.tracker import log_startup_config
+
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
 
     async with AsyncSqliteSaver.from_conn_string(os.getenv("CHAT_DB", "./chat.db")) as checkpointer:
         app.state.agent = ExcelsisAgent(store=store, rag_store=rag_store, checkpointer=checkpointer)
-        log_startup_config()
+
 
         app.state.rag_ready = False
 

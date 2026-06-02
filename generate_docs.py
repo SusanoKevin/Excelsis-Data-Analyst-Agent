@@ -298,7 +298,7 @@ def build():
         td("ChromaDB",          "chromadb",                  "Vector store",       "Persistent local vector DB; schema + policy collections"),
         td("HuggingFace Embed", "langchain-huggingface",     "Embeddings",         "BAAI/bge-small-en-v1.5 — auto-downloaded; no Ollama pull"),
         td("prometheus-client", "prometheus-client + prometheus-fastapi-instrumentator", "Metrics", "Agent tool invocations, query duration, errors, cache hit/miss; /metrics scrape endpoint"),
-        td("MLflow",            "mlflow",                    "Experiment tracking","Optional; each agent query becomes an MLflow run when MLFLOW_TRACKING_URI is set"),
+
         td("FastMCP",           "mcp",                       "MCP server",         "stdio FastMCP; 6 tools for model-direct data access"),
         td("React 18",          "react",                     "Frontend",           "Hooks-based SPA; Vite build and HMR"),
         td("Tailwind CSS v4",   "tailwindcss",               "Styling",            "Utility-first; custom design tokens"),
@@ -418,10 +418,10 @@ def build():
     ], [3.5*cm, cw-3.5*cm]))
 
     s += [h2("6.6 Monitoring & Observability"),
-          p("<font face='Courier'>src/tracker.py</font> provides <b>QueryTracker</b> — a per-request "
-            "wrapper that records tool use, token estimates, latency, and errors both to Prometheus and "
-            "optionally to MLflow."),
-          h3("Prometheus Metrics"),
+          p("<font face='Courier'>src/tracker.py</font> provides <b>QueryTracker</b> — a lightweight "
+            "per-request wrapper that records tool use, latency, and errors to Prometheus. "
+            "Grafana dashboards in <font face='Courier'>docker/grafana/</font> visualise all metrics "
+            "out of the box."),
           b("<font face='Courier'>agent_tool_invocations_total</font> [label: tool] — incremented each "
             "time the agent calls a named tool."),
           b("<font face='Courier'>agent_query_duration_seconds</font> — histogram (buckets 0.5 s – 240 s) "
@@ -430,14 +430,11 @@ def build():
           b("<font face='Courier'>cache_hits_total</font> / <font face='Courier'>cache_misses_total</font> "
             "[label: cache] — emitted by every _TTLCache instance; distinguishes "
             "<font face='Courier'>sql</font> vs <font face='Courier'>rag</font> caches."),
-          p("All metrics are scraped via the Prometheus scrape endpoint at <b>GET /metrics</b> (exposed "
-            "automatically by <font face='Courier'>prometheus_fastapi_instrumentator</font> on startup)."),
-          h3("MLflow (optional)"),
-          p("Set <font face='Courier'>MLFLOW_TRACKING_URI</font> to enable experiment tracking. Each "
-            "agent invocation becomes an MLflow run under the <b>excelsis</b> experiment, logging: "
-            "tool invocation counts, estimated token count, query latency (seconds), and user_id. "
-            "When <font face='Courier'>MLFLOW_TRACKING_URI</font> is unset, all tracking calls are "
-            "no-ops — zero overhead.")]
+          p("All metrics are scraped via <b>GET /metrics</b> (exposed automatically by "
+            "<font face='Courier'>prometheus_fastapi_instrumentator</font>). "
+            "Start the full observability stack with: "
+            "<font face='Courier'>docker compose -f docker/docker-compose.yml up -d prometheus grafana</font>. "
+            "Grafana is available at <b>http://localhost:3001</b> (default password: admin).")]
     s.append(PageBreak())
 
     # CH 7 ────────────────────────────────────────────────────────────────────
@@ -656,7 +653,7 @@ def build():
         td("MAX_MESSAGE_LEN",     "No",        "2000",                        "Maximum characters per chat message"),
         td("MAX_PROMPT_TOKENS",   "No",        "2048",                        "Maximum estimated tokens before rejection"),
         td("ALLOWED_ORIGINS",     "No",        "http://localhost:5173,…",     "Comma-separated CORS allowed origins"),
-        td("MLFLOW_TRACKING_URI", "No",        "(empty)",                     "MLflow server URI; empty = tracking disabled"),
+
     ], [3.8*cm, 2.0*cm, 3.5*cm, cw-9.3*cm]))
     s.append(PageBreak())
 
